@@ -32,7 +32,7 @@ Function SumGauss2(w, x) : FitFunc
 	// w[3] = s ()
 	Variable func = 0
 	func += w[0] * exp(-((x - w[2])^2 / (2 * w[3]^2)))
-	func += w[1] * exp(-((x - 2*w[2])^2 / (2 * (2*w[3])^2)))
+	func += w[1] * exp(-((x - 2*w[2])^2 / (2 * 2*w[3]^2)))
 	return func
 End
 
@@ -41,8 +41,8 @@ Function SumGauss3(w, x) : FitFunc
 	Variable x
 	Variable func = 0
 	func += w[0] * exp(-((x - w[3])^2 / (2 * w[4]^2)))
-	func += w[1] * exp(-((x - 2*w[3])^2 / (2 * (2*w[4])^2)))
-	func += w[2] * exp(-((x - 3*w[3])^2 / (2 * (3*w[4])^2)))
+	func += w[1] * exp(-((x - 2*w[3])^2 / (2 * 2*w[4]^2)))
+	func += w[2] * exp(-((x - 3*w[3])^2 / (2 * 3*w[4]^2)))
 	return func
 End
 
@@ -52,9 +52,9 @@ Function SumGauss4(w, x) : FitFunc
 	Variable func = 0
 	Variable m = w[4], s = w[5]
 	func += w[0] * exp(-((x - m)^2 / (2 * s^2)))
-	func += w[1] * exp(-((x - 2*m)^2 / (2 * (2*s)^2)))
-	func += w[2] * exp(-((x - 3*m)^2 / (2 * (3*s)^2)))
-	func += w[3] * exp(-((x - 4*m)^2 / (2 * (4*s)^2)))
+	func += w[1] * exp(-((x - 2*m)^2 / (2 * 2*s^2)))
+	func += w[2] * exp(-((x - 3*m)^2 / (2 * 3*s^2)))
+	func += w[3] * exp(-((x - 4*m)^2 / (2 * 4*s^2)))
 	return func
 End
 
@@ -65,7 +65,7 @@ Function SumGauss5(w, x) : FitFunc
 	Variable m = w[5], s = w[6]
 	Variable i
 	for(i = 0; i < 5; i += 1)
-		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * ((i+1)*s)^2)))
+		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * (i+1)*s^2)))
 	endfor
 	return func
 End
@@ -77,7 +77,7 @@ Function SumGauss6(w, x) : FitFunc
 	Variable m = w[6], s = w[7]
 	Variable i
 	for(i = 0; i < 6; i += 1)
-		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * ((i+1)*s)^2)))
+		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * (i+1)*s^2)))
 	endfor
 	return func
 End
@@ -89,7 +89,7 @@ Function SumGauss7(w, x) : FitFunc
 	Variable m = w[7], s = w[8]
 	Variable i
 	for(i = 0; i < 7; i += 1)
-		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * ((i+1)*s)^2)))
+		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * (i+1)*s^2)))
 	endfor
 	return func
 End
@@ -101,7 +101,7 @@ Function SumGauss8(w, x) : FitFunc
 	Variable m = w[8], s = w[9]
 	Variable i
 	for(i = 0; i < 8; i += 1)
-		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * ((i+1)*s)^2)))
+		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * (i+1)*s^2)))
 	endfor
 	return func
 End
@@ -113,7 +113,7 @@ Function SumGauss9(w, x) : FitFunc
 	Variable m = w[9], s = w[10]
 	Variable i
 	for(i = 0; i < 9; i += 1)
-		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * ((i+1)*s)^2)))
+		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * (i+1)*s^2)))
 	endfor
 	return func
 End
@@ -125,7 +125,7 @@ Function SumGauss10(w, x) : FitFunc
 	Variable m = w[10], s = w[11]
 	Variable i
 	for(i = 0; i < 10; i += 1)
-		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * ((i+1)*s)^2)))
+		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * (i+1)*s^2)))
 	endfor
 	return func
 End
@@ -137,7 +137,7 @@ Function SumGauss11(w, x) : FitFunc
 	Variable m = w[11], s = w[12]
 	Variable i
 	for(i = 0; i < 11; i += 1)
-		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * ((i+1)*s)^2)))
+		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * (i+1)*s^2)))
 	endfor
 	return func
 End
@@ -149,7 +149,7 @@ Function SumGauss12(w, x) : FitFunc
 	Variable m = w[12], s = w[13]
 	Variable i
 	for(i = 0; i < 12; i += 1)
-		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * ((i+1)*s)^2)))
+		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * (i+1)*s^2)))
 	endfor
 	return func
 End
@@ -161,7 +161,7 @@ Function SumGauss13(w, x) : FitFunc
 	Variable m = w[13], s = w[14]
 	Variable i
 	for(i = 0; i < 13; i += 1)
-		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * ((i+1)*s)^2)))
+		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * (i+1)*s^2)))
 	endfor
 	return func
 End
@@ -173,7 +173,7 @@ Function SumGauss14(w, x) : FitFunc
 	Variable m = w[14], s = w[15]
 	Variable i
 	for(i = 0; i < 14; i += 1)
-		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * ((i+1)*s)^2)))
+		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * (i+1)*s^2)))
 	endfor
 	return func
 End
@@ -185,7 +185,7 @@ Function SumGauss15(w, x) : FitFunc
 	Variable m = w[15], s = w[16]
 	Variable i
 	for(i = 0; i < 15; i += 1)
-		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * ((i+1)*s)^2)))
+		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * (i+1)*s^2)))
 	endfor
 	return func
 End
@@ -197,7 +197,7 @@ Function SumGauss16(w, x) : FitFunc
 	Variable m = w[16], s = w[17]
 	Variable i
 	for(i = 0; i < 16; i += 1)
-		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * ((i+1)*s)^2)))
+		func += w[i] * exp(-((x - (i+1)*m)^2 / (2 * (i+1)*s^2)))
 	endfor
 	return func
 End
@@ -206,76 +206,103 @@ End
 // Sum of Log-Normal Distributions ()
 // -----------------------------------------------------------------------------
 
-Function SumLogNorm1(w, x) : FitFunc
+// LogHistGauss: Gaussian in log10 space (v5.4.1)
+// Applied to log10 histograms. k-mer: center = m + log(k), SD = s/sqrt(k)
+// Parameters: [A1, ..., An, m, s]
+// m = log10(1-mer peak), s = 1-mer SD in log10 space
+
+Function LogHistGauss1(w, x) : FitFunc
 	Wave w
 	Variable x
-	// w[0] = A1, w[1] = m (log), w[2] = s (log)
-	if(x <= 0)
-		return 0
-	endif
-	return w[0] / (x * w[2] * sqrt(2*pi)) * exp(-((ln(x) - w[1])^2 / (2 * w[2]^2)))
+	// w[0] = A1, w[1] = m, w[2] = s
+	return w[0] * exp(-((x - w[1])^2 / (2 * w[2]^2)))
 End
 
-Function SumLogNorm2(w, x) : FitFunc
+Function LogHistGauss2(w, x) : FitFunc
 	Wave w
 	Variable x
-	if(x <= 0)
-		return 0
-	endif
+	// w[0]=A1, w[1]=A2, w[2]=m, w[3]=s
 	Variable func = 0
 	Variable m = w[2], s = w[3]
-	func += w[0] / (x * s * sqrt(2*pi)) * exp(-((ln(x) - m)^2 / (2 * s^2)))
-	func += w[1] / (x * sqrt(2)*s * sqrt(2*pi)) * exp(-((ln(x) - m - ln(2))^2 / (2 * (sqrt(2)*s)^2)))
+	func += w[0] * exp(-((x - m)^2 / (2 * s^2)))
+	func += w[1] * exp(-((x - m - log(2))^2 / (2 * (s/sqrt(2))^2)))
 	return func
 End
 
-Function SumLogNorm3(w, x) : FitFunc
+Function LogHistGauss3(w, x) : FitFunc
 	Wave w
 	Variable x
-	Variable scale
-	if(x <= 0)
-		return 0
-	endif
-	Variable func = 0
+	Variable func = 0, sd_k
 	Variable m = w[3], s = w[4]
 	Variable i
 	for(i = 0; i < 3; i += 1)
-		scale = sqrt(i+1)
-		func += w[i] / (x * scale*s * sqrt(2*pi)) * exp(-((ln(x) - m - ln(i+1))^2 / (2 * (scale*s)^2)))
+		sd_k = s / sqrt(i+1)
+		func += w[i] * exp(-((x - m - log(i+1))^2 / (2 * sd_k^2)))
 	endfor
 	return func
 End
 
-Function SumLogNorm4(w, x) : FitFunc
+Function LogHistGauss4(w, x) : FitFunc
 	Wave w
 	Variable x
-	Variable scale
-	if(x <= 0)
-		return 0
-	endif
-	Variable func = 0
+	Variable func = 0, sd_k
 	Variable m = w[4], s = w[5]
 	Variable i
 	for(i = 0; i < 4; i += 1)
-		scale = sqrt(i+1)
-		func += w[i] / (x * scale*s * sqrt(2*pi)) * exp(-((ln(x) - m - ln(i+1))^2 / (2 * (scale*s)^2)))
+		sd_k = s / sqrt(i+1)
+		func += w[i] * exp(-((x - m - log(i+1))^2 / (2 * sd_k^2)))
 	endfor
 	return func
 End
 
-Function SumLogNorm5(w, x) : FitFunc
+Function LogHistGauss5(w, x) : FitFunc
 	Wave w
 	Variable x
-	Variable scale
-	if(x <= 0)
-		return 0
-	endif
-	Variable func = 0
+	Variable func = 0, sd_k
 	Variable m = w[5], s = w[6]
 	Variable i
 	for(i = 0; i < 5; i += 1)
-		scale = sqrt(i+1)
-		func += w[i] / (x * scale*s * sqrt(2*pi)) * exp(-((ln(x) - m - ln(i+1))^2 / (2 * (scale*s)^2)))
+		sd_k = s / sqrt(i+1)
+		func += w[i] * exp(-((x - m - log(i+1))^2 / (2 * sd_k^2)))
+	endfor
+	return func
+End
+
+Function LogHistGauss6(w, x) : FitFunc
+	Wave w
+	Variable x
+	Variable func = 0, sd_k
+	Variable m = w[6], s = w[7]
+	Variable i
+	for(i = 0; i < 6; i += 1)
+		sd_k = s / sqrt(i+1)
+		func += w[i] * exp(-((x - m - log(i+1))^2 / (2 * sd_k^2)))
+	endfor
+	return func
+End
+
+Function LogHistGauss7(w, x) : FitFunc
+	Wave w
+	Variable x
+	Variable func = 0, sd_k
+	Variable m = w[7], s = w[8]
+	Variable i
+	for(i = 0; i < 7; i += 1)
+		sd_k = s / sqrt(i+1)
+		func += w[i] * exp(-((x - m - log(i+1))^2 / (2 * sd_k^2)))
+	endfor
+	return func
+End
+
+Function LogHistGauss8(w, x) : FitFunc
+	Wave w
+	Variable x
+	Variable func = 0, sd_k
+	Variable m = w[8], s = w[9]
+	Variable i
+	for(i = 0; i < 8; i += 1)
+		sd_k = s / sqrt(i+1)
+		func += w[i] * exp(-((x - m - log(i+1))^2 / (2 * sd_k^2)))
 	endfor
 	return func
 End

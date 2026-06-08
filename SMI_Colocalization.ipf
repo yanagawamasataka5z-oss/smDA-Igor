@@ -147,10 +147,10 @@ End
 Function ColCmpAffinityProc(ctrlName) : ButtonControl
 	String ctrlName
 	
-	NVAR/Z ColAffinityParam = root:ColAffinityParam
-	NVAR/Z ColWeightingMode = root:ColWeightingMode
-	Variable param = NVAR_Exists(ColAffinityParam) ? ColAffinityParam : 0  // 0=Kb, 1=Density, 2=Distance
-	Variable weighting = NVAR_Exists(ColWeightingMode) ? ColWeightingMode : 1  // 0=Particle, 1=Molecule
+	NVAR ColAffinityParam = root:ColAffinityParam
+	NVAR ColWeightingMode = root:ColWeightingMode
+	Variable param = ColAffinityParam  // 0=Kb, 1=Density, 2=Distance
+	Variable weighting = ColWeightingMode  // 0=Particle, 1=Molecule
 	
 	String weightStr = SelectString(weighting, "Particle", "Molecule")
 	
@@ -181,9 +181,9 @@ End
 Function ColCmpIntensityProc(ctrlName) : ButtonControl
 	String ctrlName
 	
-	NVAR/Z ColIntensityMode = root:ColIntensityMode
-	Variable mode = NVAR_Exists(ColIntensityMode) ? ColIntensityMode : 0
-	
+	NVAR ColIntensityMode = root:ColIntensityMode
+	Variable mode = ColIntensityMode
+
 	if(mode == 0)
 		// Simple mode (Int/MeanInt)
 		Print "=== Compare Intensity (Simple) ==="
@@ -252,6 +252,14 @@ Function ColChannelModeProc(ctrlName, popNum, popStr) : PopupMenuControl
 	ColOutputChannel = popNum - 1  // 0=Both, 1=C1, 2=C2
 End
 
+// Area normalization mode callback: 0=Min, 1=Max
+Function ColAreaModeProc(ctrlName, popNum, popStr) : PopupMenuControl
+	String ctrlName
+	Variable popNum
+	String popStr
+	Variable/G root:ColAreaMode = popNum - 1  // 0=Min, 1=Max
+End
+
 // -----------------------------------------------------------------------------
 // GetOutputChannelList - Output
 // -----------------------------------------------------------------------------
@@ -259,8 +267,8 @@ End
 Function/S GetOutputChannelList(useECSuffix)
 	Variable useECSuffix
 	
-	NVAR/Z ColOutputChannel = root:ColOutputChannel
-	Variable mode = NVAR_Exists(ColOutputChannel) ? ColOutputChannel : 0
+	NVAR ColOutputChannel = root:ColOutputChannel
+	Variable mode = ColOutputChannel
 	
 	String suffix1, suffix2
 	if(useECSuffix)
@@ -306,9 +314,9 @@ End
 Function ColCmpDiffusionProc(ctrlName) : ButtonControl
 	String ctrlName
 	
-	NVAR/Z ColDiffusionMode = root:ColDiffusionMode
-	Variable mode = NVAR_Exists(ColDiffusionMode) ? ColDiffusionMode : 0
-	
+	NVAR ColDiffusionMode = root:ColDiffusionMode
+	Variable mode = ColDiffusionMode
+
 	if(mode == 0)
 		// per Total mode (Absolute HMMP = Colocalization %)
 		Print "=== Compare D-state Population (per Total) ==="
@@ -322,15 +330,19 @@ Function ColCmpDiffusionProc(ctrlName) : ButtonControl
 		Print "=== Compare D-state Steps ==="
 		ColCompareSteps()
 	endif
+
+	// Steps Density (ColSteps / Area) - always run
+	Print "=== Compare Steps Density ==="
+	ColCompareStepsDensity()
 End
 
-// Compare On-time 
+// Compare On-time
 Function ColCmpOntimeProc(ctrlName) : ButtonControl
 	String ctrlName
 	
-	NVAR/Z ColOntimeMode = root:ColOntimeMode
-	Variable mode = NVAR_Exists(ColOntimeMode) ? ColOntimeMode : 0
-	
+	NVAR ColOntimeMode = root:ColOntimeMode
+	Variable mode = ColOntimeMode
+
 	if(mode == 0)
 		// Simple mode
 		Print "=== Compare On-time (Simple Mean) ==="
@@ -346,9 +358,9 @@ End
 Function ColCmpOnrateProc(ctrlName) : ButtonControl
 	String ctrlName
 	
-	NVAR/Z ColOnrateMode = root:ColOnrateMode
-	Variable mode = NVAR_Exists(ColOnrateMode) ? ColOnrateMode : 0
-	
+	NVAR ColOnrateMode = root:ColOnrateMode
+	Variable mode = ColOnrateMode
+
 	if(mode == 0)
 		// Event rate mode
 		Print "=== Compare On-rate (On-event Rate) ==="
@@ -765,150 +777,110 @@ static Function ColCreateCellFolder(sampleName, folderName)
 End
 
 // -----------------------------------------------------------------------------
-// TraceMatrix_col Creation
+// TraceMatrix_col Creation for a single cell
+// Converts TraceMatrix (row=data points, ROI-sorted) to TraceMatrix_col (row=frame number)
 // -----------------------------------------------------------------------------
 
-Function MakeTraceMatrixCol(sampleName)
-	String sampleName
-	
-	String savedDF = GetDataFolder(1)
-	
-	// Determine folder structure
-	String baseFolder
-	if(DataFolderExists("root:Samples:" + sampleName))
-		baseFolder = "root:Samples:" + sampleName
-	else
-		baseFolder = "root:" + sampleName
-	endif
-	
-	if(!DataFolderExists(baseFolder))
-		return -1
-	endif
-	
-	SetDataFolder $baseFolder
+Function MakeTraceMatrixColSingleCell(cellFolder)
+	String cellFolder
 	
 	// Get framerate for time conversion
-	// MakeTraceMatrixTimeBase() converts Rtime to real time (seconds)
-	// We need to convert back to frame number for Colocalization analysis
-	// (matching the pattern in DataLoader.ipf MakeAnalysisWavesS0)
 	NVAR/Z framerate = root:framerate
 	Variable hasFramerate = NVAR_Exists(framerate) && framerate > 0
 	
-	Variable m = 0
-	String folderName, cellFolder
+	Wave/Z TraceMatrix
+	if(!WaveExists(TraceMatrix))
+		return -1
+	endif
 	
-	do
-		folderName = sampleName + num2str(m + 1)
-		cellFolder = baseFolder + ":" + folderName
-		
-		if(!DataFolderExists(cellFolder))
-			break
+	// Delete existing TraceMatrix_col to free memory
+	Wave/Z existingCol = TraceMatrix_col
+	if(WaveExists(existingCol))
+		KillWaves/Z existingCol
+	endif
+	
+	Variable numRows = DimSize(TraceMatrix, 0)
+	Variable numCols = DimSize(TraceMatrix, 1)
+	
+	// Extract ROI column
+	Make/O/N=(numRows) tempROI
+	tempROI = TraceMatrix[p][0]
+	
+	Variable numROI = WaveMax(tempROI)
+	if(numROI <= 0)
+		KillWaves/Z tempROI
+		return -1
+	endif
+	
+	// First pass: find maximum frame number across all data points
+	// TraceMatrix[i][2] is real time (seconds) after MakeTraceMatrixTimeBase
+	Variable maxFrameNum = 0
+	Variable i, rawTimeVal, frameNum
+	
+	for(i = 0; i < numRows; i += 1)
+		rawTimeVal = TraceMatrix[i][2]
+		if(hasFramerate && framerate > 0)
+			frameNum = round(rawTimeVal / framerate)
+		else
+			frameNum = round(rawTimeVal)
 		endif
-		
-		SetDataFolder $cellFolder
-		
-		// Skip if TraceMatrix_col already exists
-		Wave/Z existingCol = TraceMatrix_col
-		if(WaveExists(existingCol))
-			m += 1
+		if(frameNum > maxFrameNum)
+			maxFrameNum = frameNum
+		endif
+	endfor
+	
+	// Sanity check: limit maximum size to prevent memory issues
+	if(maxFrameNum > 100000)
+		Printf "Warning: maxFrameNum=%d is very large for %s, limiting to 100000\r", maxFrameNum, cellFolder
+		maxFrameNum = 100000
+	endif
+	
+	// Create TraceMatrix_col with correct dimensions (row=frame, columns=ROI×8)
+	// Use single precision (no /D flag) to match original and save memory
+	Make/O/N=(maxFrameNum + 1, numROI * 8) TraceMatrix_col = NaN
+	
+	// Second pass: place each data point at its correct frame row
+	Variable roiIdx, colIdx
+	
+	for(i = 0; i < numRows; i += 1)
+		roiIdx = TraceMatrix[i][0] - 1  // ROI is 1-indexed
+		if(roiIdx < 0 || roiIdx >= numROI)
 			continue
 		endif
 		
-		Wave/Z TraceMatrix
-		if(!WaveExists(TraceMatrix))
-			m += 1
+		rawTimeVal = TraceMatrix[i][2]
+		if(hasFramerate && framerate > 0)
+			frameNum = round(rawTimeVal / framerate)
+		else
+			frameNum = round(rawTimeVal)
+		endif
+		
+		// Bounds check
+		if(frameNum < 0 || frameNum > maxFrameNum)
 			continue
 		endif
 		
-		Variable numRows = DimSize(TraceMatrix, 0)
-		Variable numCols = DimSize(TraceMatrix, 1)
-		
-		Make/O/D/N=(numRows) tempROI
-		tempROI = TraceMatrix[p][0]
-		
-		Variable numROI = WaveMax(tempROI)
-		if(numROI <= 0)
-			KillWaves/Z tempROI
-			m += 1
-			continue
-		endif
-		
-		// Create index histogram for ROI counts
-		Make/O/D/N=(numROI) IndexWave = 0
-		Histogram/B={1, 1, numROI} tempROI, IndexWave
-		
-		// Calculate actual maximum time needed
-		// TraceMatrix[p][2] may be in real time (seconds) after MakeTraceMatrixTimeBase
-		// Convert to frame number for array indexing
-		Variable roiIdx, startRow = 0
-		Variable roiDataCount, timeOffset, endTime
-		Variable maxTimeNeeded = 0
-		Variable rawTimeVal
-		
-		for(roiIdx = 0; roiIdx < numROI; roiIdx += 1)
-			roiDataCount = IndexWave[roiIdx]
-			if(roiDataCount > 0)
-				rawTimeVal = TraceMatrix[startRow][2]
-				// Convert to frame number: divide by framerate and round
-				if(hasFramerate)
-					timeOffset = round(rawTimeVal / framerate)
-				else
-					timeOffset = rawTimeVal
-				endif
-				endTime = timeOffset + roiDataCount - 1
-				if(endTime > maxTimeNeeded)
-					maxTimeNeeded = endTime
-				endif
-				startRow += roiDataCount
-			endif
+		// Copy 8 columns for this data point to the correct frame row
+		for(colIdx = 0; colIdx < 8 && colIdx < numCols; colIdx += 1)
+			TraceMatrix_col[frameNum][roiIdx * 8 + colIdx] = TraceMatrix[i][colIdx]
 		endfor
 		
-		// Create TraceMatrix_col with correct dimensions (8 columns per ROI)
-		Make/O/D/N=(maxTimeNeeded + 1, numROI * 8) TraceMatrix_col = NaN
-		
-		// Fill TraceMatrix_col using wave assignment
-		Variable colIdx, rowIdx
-		startRow = 0
-		
-		for(roiIdx = 0; roiIdx < numROI; roiIdx += 1)
-			roiDataCount = IndexWave[roiIdx]
-			if(roiDataCount <= 0)
-				continue
-			endif
-			
-			rawTimeVal = TraceMatrix[startRow][2]
-			// Convert to frame number
-			if(hasFramerate)
-				timeOffset = round(rawTimeVal / framerate)
-			else
-				timeOffset = rawTimeVal
-			endif
-			
-			// Copy 8 columns for this ROI
-			for(colIdx = 0; colIdx < 8; colIdx += 1)
-				if(colIdx < numCols)
-					TraceMatrix_col[timeOffset, timeOffset + roiDataCount - 1][roiIdx * 8 + colIdx] = TraceMatrix[p - timeOffset + startRow][colIdx]
-				endif
-			endfor
-			
-			// Convert Rtime column (col 2) back to frame number
-			// This matches DataLoader.ipf MakeAnalysisWavesS0 pattern:
-			// Rtime_S0 = TM[p][2] / framerate
-			if(hasFramerate)
-				for(rowIdx = timeOffset; rowIdx < timeOffset + roiDataCount; rowIdx += 1)
-					TraceMatrix_col[rowIdx][roiIdx * 8 + 2] = round(TraceMatrix_col[rowIdx][roiIdx * 8 + 2] / framerate)
-				endfor
-			endif
-			
-			startRow += roiDataCount
-		endfor
-		
-		KillWaves/Z tempROI, IndexWave
-		
-		m += 1
-	while(1)
+		// Store frame number in Rtime column (col 2)
+		TraceMatrix_col[frameNum][roiIdx * 8 + 2] = frameNum
+	endfor
 	
-	SetDataFolder $savedDF
+	KillWaves/Z tempROI
+	
+	return 0
+End
+
+// MakeTraceMatrixCol - kept for backward compatibility but now only creates on-demand
+Function MakeTraceMatrixCol(sampleName)
+	String sampleName
+	
+	// This function is now a no-op
+	// TraceMatrix_col is created on-demand in Colocalization_HMM
+	// to minimize memory usage
 	return 0
 End
 
@@ -959,14 +931,23 @@ Function Colocalization_HMM(SampleName1, SampleName2) //PA()2
         
         NewDataFolder/O $(colBase + ":" + SampleName1 + ":" + FolderName1)
         SetDataFolder root:$(SampleName1):$(FolderName1)
+        
+        // Create TraceMatrix_col on-demand for this cell
+        MakeTraceMatrixColSingleCell(FolderName1)
+        
         wave/Z TraceMatrix_col
         if(!WaveExists(TraceMatrix_col))
             m += 1
             continue
         endif
+        
+        // Use Duplicate like original (required for same-sample comparison)
         Duplicate/O TraceMatrix_col, Matrix1
-        variable ColumnSize1 =DimSize(TraceMatrix_col, 1) //Matrix1
-        variable RowSize1 = DimSize(TraceMatrix_col, 0)//Matrix1
+        variable ColumnSize1 = DimSize(TraceMatrix_col, 1)
+        variable RowSize1 = DimSize(TraceMatrix_col, 0)
+        
+        // Delete TraceMatrix_col after Duplicate to free memory
+        KillWaves/Z TraceMatrix_col
                 
         FolderName2 = GetCellFolderName(SampleName2, m)
         if(strlen(FolderName2) == 0)
@@ -983,18 +964,27 @@ Function Colocalization_HMM(SampleName1, SampleName2) //PA()2
         
         NewDataFolder/O $(colBase + ":" + SampleName2 + ":" + FolderName2)
         SetDataFolder root:$(SampleName2):$(FolderName2)
+        
+        // Create TraceMatrix_col on-demand for this cell
+        MakeTraceMatrixColSingleCell(FolderName2)
+        
         wave/Z TraceMatrix_col
         if(!WaveExists(TraceMatrix_col))
             KillWaves/Z Matrix1
             m += 1
             continue
         endif
+        
+        // Use Duplicate like original
         Duplicate/O TraceMatrix_col, Matrix2
-        variable RowSize2 = DimSize(TraceMatrix_col, 0)//Matrix2
-        variable ColumnSize2 =DimSize(TraceMatrix_col, 1) //Matrix2
+        variable RowSize2 = DimSize(TraceMatrix_col, 0)
+        variable ColumnSize2 = DimSize(TraceMatrix_col, 1)
+        
+        // Delete TraceMatrix_col after Duplicate to free memory
+        KillWaves/Z TraceMatrix_col
         
         variable ColumnSize3 = (ColumnSize1/8+ColumnSize2/8)*20
-        variable RowSize3 = max(RowSize1, RowSize2) //Matrix1Matrix2
+        variable RowSize3 = max(RowSize1, RowSize2)
         Make/O/N=(RowSize3, ColumnSize3), ColMatrix
         ColMatrix=nan
         String ColMName = FolderName1+"_"+FolderName2+"_col"
@@ -1159,7 +1149,10 @@ Function Colocalization_HMM(SampleName1, SampleName2) //PA()2
         DeletePoints/M=1 c3, ColumnSize3 - c3, ColMatrix
         Duplicate/O ColMatrix, $(colBase + ":" + SampleName1 + ":" + FolderName1 + ":" + ColMName)
         Duplicate/O ColMatrix, $(colBase + ":" + SampleName2 + ":" + FolderName2 + ":" + ColMName)
-        KillWaves Matrix1, Matrix2, ColMatrix
+        
+        // Clean up Matrix1, Matrix2, ColMatrix to free memory
+        KillWaves/Z Matrix1, Matrix2, ColMatrix
+        
         m+=1
     While(m<n)
               
@@ -1819,7 +1812,9 @@ Function ExtractColocalizationAll_HMM(SampleName1, SampleName2)
               Area2 = ParaDensityAvg[1] //ch2
               Dcol2 = ParaDensityAvg[2] //ch2
    
-   variable AreaMin = min(Area1, Area2)       
+   NVAR/Z ColAreaMode = root:ColAreaMode
+   Variable areaMode = NVAR_Exists(ColAreaMode) ? ColAreaMode : 1  // 0=Min, 1=Max
+   variable AreaMin = (areaMode == 0) ? min(Area1, Area2) : max(Area1, Area2)
               
    //ch1//           
    SetDataFolder $(ecBase + ":" + SampleName1 + ":" + FolderName1) 
@@ -1829,7 +1824,7 @@ Function ExtractColocalizationAll_HMM(SampleName1, SampleName2)
               Tcol = numpnts(extracted)
               Pcol = Tcol/Tall1*100
               ParaCol_C1[0] = Pcol 
-              ParaCol_C1[3] = (Tcol/AreaMin)*FrameNum/((Tall1/Area1-Tcol/AreaMin)*(Tall2/Area2-Tcol/AreaMin))
+              ParaCol_C1[3] = (Tcol/AreaMin)*FrameNum/(((Tall1-Tcol)/Area1)*((Tall2-Tcol)/Area2))
               ParaCol_C1[4] = Area1
               ParaCol_C1[5] = Area2
               ParaCol_C1[6] = AreaMin
@@ -1852,7 +1847,7 @@ Function ExtractColocalizationAll_HMM(SampleName1, SampleName2)
               Tcol = numpnts(extracted)
               Pcol = Tcol/Tall2*100
               ParaCol_C2[0] = Pcol 
-              ParaCol_C2[3] = (Tcol/AreaMin)*FrameNum/((Tall1/Area1-Tcol/AreaMin)*(Tall2/Area2-Tcol/AreaMin))
+              ParaCol_C2[3] = (Tcol/AreaMin)*FrameNum/(((Tall1-Tcol)/Area1)*((Tall2-Tcol)/Area2))
               ParaCol_C2[4] = Area1
               ParaCol_C2[5] = Area2
               ParaCol_C2[6] = AreaMin
@@ -1875,7 +1870,7 @@ Function ExtractColocalizationAll_HMM(SampleName1, SampleName2)
       ParaCol_Labels[3] = "Kb"
       ParaCol_Labels[4] = "Area1"
       ParaCol_Labels[5] = "Area2"
-      ParaCol_Labels[6] = "AreaMin"
+      ParaCol_Labels[6] = "AreaNorm"
       ParaCol_Labels[7] = "Tall1"
       ParaCol_Labels[8] = "Tall2"
       ParaCol_Labels[9] = "Tcol"
@@ -2109,10 +2104,10 @@ Function ColTrajectoryPair(sampleName1, sampleName2)
 	String sampleName1, sampleName2
 	
 	String savedDF = GetDataFolder(1)
-	NVAR/Z Dstate = root:Dstate
+	NVAR Dstate = root:Dstate
 	NVAR scale = root:scale
 	NVAR PixNum = root:PixNum
-	Variable maxState = NVAR_Exists(Dstate) ? Dstate : 2
+	Variable maxState = Dstate
 	Variable ImageSize = scale * PixNum
 	
 	// 
@@ -2195,7 +2190,7 @@ Function ColTrajectoryPair(sampleName1, sampleName2)
 				endif
 			endif
 			
-			// Layer 3: EC folder trajectories (yellow, line+marker)
+			// Layer 3a: EC folder Ch1 trajectories (yellow, line+marker)
 			if(DataFolderExists(ecFolder1))
 				SetDataFolder $ecFolder1
 				Wave/Z Xum_S0_C1E, Yum_S0_C1E
@@ -2205,6 +2200,20 @@ Function ColTrajectoryPair(sampleName1, sampleName2)
 					String tNameEC1 = StringFromList(ItemsInList(traceList, ";") - 1, traceList, ";")
 					ModifyGraph mode($tNameEC1)=4, rgb($tNameEC1)=(65280,65280,0)
 					ModifyGraph marker($tNameEC1)=8, msize($tNameEC1)=2, lsize($tNameEC1)=1
+					traceCount += 1
+				endif
+			endif
+
+			// Layer 3b: EC folder Ch2 trajectories (cyan, line+marker)
+			if(DataFolderExists(ecFolder2))
+				SetDataFolder $ecFolder2
+				Wave/Z Xum_S0_C2E, Yum_S0_C2E
+				if(WaveExists(Xum_S0_C2E) && WaveExists(Yum_S0_C2E))
+					AppendToGraph Yum_S0_C2E vs Xum_S0_C2E
+					traceList = TraceNameList(graphWin, ";", 1)
+					String tNameEC2 = StringFromList(ItemsInList(traceList, ";") - 1, traceList, ";")
+					ModifyGraph mode($tNameEC2)=4, rgb($tNameEC2)=(0,65280,65280)
+					ModifyGraph marker($tNameEC2)=5, msize($tNameEC2)=2, lsize($tNameEC2)=1
 					traceCount += 1
 				endif
 			endif
@@ -2344,13 +2353,13 @@ Function ColDistanceHistogram(sampleName, suffix)
 	endif
 	
 	// Get histogram parameters from LPhistBin/LPhistDim
-	NVAR/Z LPhistBin = root:LPhistBin
-	NVAR/Z LPhistDim = root:LPhistDim
+	NVAR LPhistBin = root:LPhistBin
+	NVAR LPhistDim = root:LPhistDim
 	NVAR/Z Dstate = root:Dstate
 	NVAR/Z cHMM = root:cHMM
-	
-	Variable distBin = NVAR_Exists(LPhistBin) ? LPhistBin * 20 : 20  // nm
-	Variable distDim = NVAR_Exists(LPhistDim) ? LPhistDim : 40
+
+	Variable distBin = LPhistBin * 20  // nm
+	Variable distDim = LPhistDim
 	
 	Variable maxState = 0
 	if(NVAR_Exists(cHMM) && cHMM == 1 && NVAR_Exists(Dstate))
@@ -2859,9 +2868,9 @@ static Function ColRenameWavesForAnalysis(sampleName, suffix, mode)
 		return -1
 	endif
 	
-	NVAR/Z Dstate = root:Dstate
-	Variable maxState = NVAR_Exists(Dstate) ? Dstate : 3
-	
+	NVAR Dstate = root:Dstate
+	Variable maxState = Dstate
+
 	Variable m = 0
 	String folderName
 	
@@ -3186,20 +3195,20 @@ Function ColCalculateAbsoluteHMMP(sampleName, waveSuffix)
 	
 	NVAR/Z Dstate = root:Dstate
 	NVAR/Z cHMM = root:cHMM
-	NVAR/Z MeanIntGauss = root:MeanIntGauss
+	NVAR MeanIntGauss = root:MeanIntGauss
 	Variable maxState = 0
 	if(NVAR_Exists(cHMM) && cHMM == 1 && NVAR_Exists(Dstate))
 		maxState = Dstate
 	endif
-	
-	Variable meanInt = NVAR_Exists(MeanIntGauss) ? MeanIntGauss : 1
-	
+
+	Variable meanInt = MeanIntGauss
+
 	Variable numCells = CountDataFoldersInPath(ecBase, sampleName)
 	if(numCells == 0)
 		SetDataFolder $savedDF
 		return -1
 	endif
-	
+
 	String ecSamplePath = ecBase + ":" + sampleName + ":"
 	String origSamplePath = origBase + ":" + sampleName + ":"
 	
@@ -3419,75 +3428,78 @@ Function ColCalculateSteps(sampleName, waveSuffix)
 	
 	NVAR/Z Dstate = root:Dstate
 	NVAR/Z cHMM = root:cHMM
-	NVAR/Z MeanIntGauss = root:MeanIntGauss
-	
+	NVAR MeanIntGauss = root:MeanIntGauss
+
 	Variable maxState = 0
 	if(NVAR_Exists(cHMM) && cHMM == 1 && NVAR_Exists(Dstate))
 		maxState = Dstate
 	endif
-	
-	Variable meanInt = NVAR_Exists(MeanIntGauss) ? MeanIntGauss : 1
+
+	Variable meanInt = MeanIntGauss
+
 	if(meanInt <= 0)
-		meanInt = 1
+		Printf "  WARNING: MeanIntGauss not set (<=0), skipping molecule steps calculation in ColCalculateSteps\r"
+		SetDataFolder $savedDF
+		return -1
 	endif
-	
+
 	Variable numCells = CountDataFoldersInPath(ecBase, sampleName)
 	if(numCells == 0)
 		SetDataFolder $savedDF
 		return -1
 	endif
-	
+
 	String ecSamplePath = ecBase + ":" + sampleName + ":"
-	
+
 	// Matrix
 	String matrixPath = ecSamplePath + "Matrix"
 	if(!DataFolderExists(matrixPath))
 		NewDataFolder $matrixPath
 	endif
-	
+
 	// Matrix waveParticleMolecule
 	SetDataFolder $matrixPath
 	Variable s, m
 	for(s = 0; s <= maxState; s += 1)
-		// Particle: 
+		// Particle:
 		String stepsMatrixName = "ColSteps_S" + num2str(s) + waveSuffix + "_m"
 		Make/O/N=(numCells) $stepsMatrixName = NaN
-		// Molecule: 
+		// Molecule:
 		String stepsMolMatrixName = "ColStepsMol_S" + num2str(s) + waveSuffix + "_m"
 		Make/O/N=(numCells) $stepsMolMatrixName = NaN
 	endfor
-	
-	// 
+
+	//
 	for(m = 0; m < numCells; m += 1)
 		String folderName = sampleName + num2str(m + 1)
 		String ecCellPath = ecSamplePath + folderName
-		
+
 		if(!DataFolderExists(ecCellPath))
 			continue
 		endif
-		
+
 		SetDataFolder $ecCellPath
-		
+
 		// ColSteps_waveSuffixParticle
 		String stepsWaveName = "ColSteps" + waveSuffix
 		Make/O/N=(maxState + 1) $stepsWaveName = NaN
 		Wave stepsWave = $stepsWaveName
-		
+
 		// ColStepsMol_waveSuffixMolecule
 		String stepsMolWaveName = "ColStepsMol" + waveSuffix
 		Make/O/N=(maxState + 1) $stepsMolWaveName = NaN
 		Wave stepsMolWave = $stepsMolWaveName
-		
-		// 
+
+		//
 		for(s = 0; s <= maxState; s += 1)
 			// Rtime_Sn_waveSuffix
 			String rtimeWaveName = "Rtime_S" + num2str(s) + waveSuffix
 			Wave/Z rtimeWave = $rtimeWaveName
-			
+
 			// Int_Sn_waveSuffix
 			String intWaveName = "Int_S" + num2str(s) + waveSuffix
 			Wave/Z intWave = $intWaveName
-			
+
 			// Particle: NaN
 			Variable particleSteps = 0
 			if(WaveExists(rtimeWave))
@@ -3495,7 +3507,7 @@ Function ColCalculateSteps(sampleName, waveSuffix)
 				particleSteps = numpnts(tempRtime)
 			endif
 			stepsWave[s] = particleSteps
-			
+
 			// Molecule: Osize
 			Variable moleculeSteps = 0
 			if(WaveExists(intWave))
@@ -3603,8 +3615,149 @@ Function ColCalculateSteps(sampleName, waveSuffix)
 		endif
 	endfor
 	
+	// =============================================
+	// ColStepsDensity = ColSteps / Area [/um^2]
+	// =============================================
+	// Determine original channel suffix for area lookup
+	String origSuffix
+	if(StringMatch(waveSuffix, "_C1E"))
+		origSuffix = "1"
+	else
+		origSuffix = "2"
+	endif
+
+	// Get sample names from EC base
+	String sampleListStr = GetSampleListForChannel(str2num(origSuffix))
+	String origSampleName = sampleName
+
+	for(m = 0; m < numCells; m += 1)
+		String fn = sampleName + num2str(m + 1)
+		String eccp = ecSamplePath + fn
+		if(!DataFolderExists(eccp))
+			continue
+		endif
+
+		// Get cell area from original data folder
+		String origCellPath = "root:" + origSampleName + ":" + fn
+		Wave/Z ParaDensityAvg = $(origCellPath + ":ParaDensityAvg")
+		Variable cellArea = NaN
+		if(WaveExists(ParaDensityAvg) && numpnts(ParaDensityAvg) > 1)
+			cellArea = ParaDensityAvg[1]
+		endif
+
+		SetDataFolder $eccp
+
+		// Create ColStepsDensity = ColSteps / Area (particle)
+		Wave/Z stW = $("ColSteps" + waveSuffix)
+		if(WaveExists(stW) && numtype(cellArea) == 0 && cellArea > 0)
+			String densPName = "ColStepsDensity" + waveSuffix
+			Make/O/N=(maxState + 1) $densPName = NaN
+			Wave densPW = $densPName
+			for(s = 0; s <= maxState; s += 1)
+				if(numtype(stW[s]) == 0)
+					densPW[s] = stW[s] / cellArea
+				endif
+			endfor
+		endif
+
+		// Create ColStepsMolDensity = ColStepsMol / Area (molecule)
+		Wave/Z stMW = $("ColStepsMol" + waveSuffix)
+		if(WaveExists(stMW) && numtype(cellArea) == 0 && cellArea > 0)
+			String densMName = "ColStepsMolDensity" + waveSuffix
+			Make/O/N=(maxState + 1) $densMName = NaN
+			Wave densMW = $densMName
+			for(s = 0; s <= maxState; s += 1)
+				if(numtype(stMW[s]) == 0)
+					densMW[s] = stMW[s] / cellArea
+				endif
+			endfor
+		endif
+	endfor
+
+	// Collect density to matrix and compute avg/sem
+	SetDataFolder $matrixPath
+	for(s = 0; s <= maxState; s += 1)
+		// Particle density
+		String densPMatName = "ColStepsDensity_S" + num2str(s) + waveSuffix + "_m"
+		Make/O/N=(numCells) $densPMatName = NaN
+		Wave densPMat = $densPMatName
+		// Molecule density
+		String densMMatName = "ColStepsMolDensity_S" + num2str(s) + waveSuffix + "_m"
+		Make/O/N=(numCells) $densMMatName = NaN
+		Wave densMmat = $densMMatName
+
+		for(m = 0; m < numCells; m += 1)
+			fn = sampleName + num2str(m + 1)
+			eccp = ecSamplePath + fn
+			if(!DataFolderExists(eccp))
+				continue
+			endif
+			Wave/Z dpW = $(eccp + ":ColStepsDensity" + waveSuffix)
+			if(WaveExists(dpW))
+				densPMat[m] = dpW[s]
+			endif
+			Wave/Z dmW = $(eccp + ":ColStepsMolDensity" + waveSuffix)
+			if(WaveExists(dmW))
+				densMmat[m] = dmW[s]
+			endif
+		endfor
+	endfor
+
+	// Compute avg/sem for density
+	SetDataFolder $resultsPath
+	for(s = 0; s <= maxState; s += 1)
+		// Particle density
+		densPMatName = "ColStepsDensity_S" + num2str(s) + waveSuffix + "_m"
+		SetDataFolder $matrixPath
+		Wave/Z dpMat = $densPMatName
+		if(WaveExists(dpMat))
+			SetDataFolder $resultsPath
+			Make/O/N=1 $(densPMatName + "_avg") = NaN, $(densPMatName + "_sem") = NaN
+			Wave dpAvg = $(densPMatName + "_avg")
+			Wave dpSem = $(densPMatName + "_sem")
+			Make/FREE/N=(numCells) tmpDP
+			Variable vc2 = 0
+			for(k = 0; k < numCells; k += 1)
+				if(numtype(dpMat[k]) == 0)
+					tmpDP[vc2] = dpMat[k]
+					vc2 += 1
+				endif
+			endfor
+			if(vc2 > 0)
+				Redimension/N=(vc2) tmpDP
+				WaveStats/Q tmpDP
+				dpAvg[0] = V_avg
+				dpSem[0] = vc2 > 1 ? V_sdev / sqrt(V_npnts) : 0
+			endif
+		endif
+		// Molecule density
+		densMMatName = "ColStepsMolDensity_S" + num2str(s) + waveSuffix + "_m"
+		SetDataFolder $matrixPath
+		Wave/Z dmMat = $densMMatName
+		if(WaveExists(dmMat))
+			SetDataFolder $resultsPath
+			Make/O/N=1 $(densMMatName + "_avg") = NaN, $(densMMatName + "_sem") = NaN
+			Wave dmAvg = $(densMMatName + "_avg")
+			Wave dmSem = $(densMMatName + "_sem")
+			Make/FREE/N=(numCells) tmpDM
+			vc2 = 0
+			for(k = 0; k < numCells; k += 1)
+				if(numtype(dmMat[k]) == 0)
+					tmpDM[vc2] = dmMat[k]
+					vc2 += 1
+				endif
+			endfor
+			if(vc2 > 0)
+				Redimension/N=(vc2) tmpDM
+				WaveStats/Q tmpDM
+				dmAvg[0] = V_avg
+				dmSem[0] = vc2 > 1 ? V_sdev / sqrt(V_npnts) : 0
+			endif
+		endif
+	endfor
+
 	SetDataFolder $savedDF
-	Printf "  ColSteps%s calculated for %s\r", waveSuffix, sampleName
+	Printf "  ColSteps%s + ColStepsDensity calculated for %s\r", waveSuffix, sampleName
 	return 0
 End
 
@@ -3796,15 +3949,15 @@ Function ColCalculateMolecularDensityEC(sampleName, waveSuffix)
 	
 	NVAR/Z Dstate = root:Dstate
 	NVAR/Z cHMM = root:cHMM
-	NVAR/Z FrameNum = root:FrameNum
-	
+	NVAR FrameNum = root:FrameNum
+
 	Variable maxState = 0
 	if(NVAR_Exists(cHMM) && cHMM == 1 && NVAR_Exists(Dstate))
 		maxState = Dstate
 	endif
-	
-	Variable frameNumVal = NVAR_Exists(FrameNum) ? FrameNum : 1000
-	
+
+	Variable frameNumVal = FrameNum
+
 	Variable numCells = CountDataFoldersInPath(ecBase, sampleName)
 	if(numCells == 0)
 		SetDataFolder $savedDF
@@ -3953,15 +4106,15 @@ Function ColCalculateKbByState(sampleName1, sampleName2, waveSuffix)
 	
 	NVAR/Z gDstate = root:Dstate
 	NVAR/Z cHMM = root:cHMM
-	NVAR/Z FrameNum = root:FrameNum
-	
+	NVAR FrameNum = root:FrameNum
+
 	Variable maxState = 0
 	if(NVAR_Exists(cHMM) && cHMM == 1 && NVAR_Exists(gDstate))
 		maxState = gDstate
 	endif
-	
-	Variable frameNumVal = NVAR_Exists(FrameNum) ? FrameNum : 1000
-	
+
+	Variable frameNumVal = FrameNum
+
 	// EC
 	String ecSampleName = SelectString(StringMatch(waveSuffix, "*C1*"), sampleName2, sampleName1)
 	String origSampleName1 = sampleName1
@@ -4017,7 +4170,9 @@ Function ColCalculateKbByState(sampleName1, sampleName2, waveSuffix)
 			continue
 		endif
 		
-		Variable AreaMin = min(Area1, Area2)
+		NVAR/Z ColAreaMode = root:ColAreaMode
+		Variable areaMode = NVAR_Exists(ColAreaMode) ? ColAreaMode : 1  // 0=Min, 1=Max
+		Variable AreaMin = (areaMode == 0) ? min(Area1, Area2) : max(Area1, Area2)
 		
 		// 
 		for(s = 0; s <= maxState; s += 1)
@@ -4051,11 +4206,10 @@ Function ColCalculateKbByState(sampleName1, sampleName2, waveSuffix)
 				Tcol_s = numpnts(tempEC)
 			endif
 			
-			// Kb
-			// Kb_s = (Tcol_s/AreaMin) * FrameNum / ((Tall1_s/Area1 - Tcol_s/AreaMin) * (Tall2_s/Area2 - Tcol_s/AreaMin))
-			Variable A_free = Tall1_s/Area1 - Tcol_s/AreaMin
-			Variable B_free = Tall2_s/Area2 - Tcol_s/AreaMin
-			
+			// Kb (particle): A_free/B_free use same-channel normalization
+			Variable A_free = (Tall1_s - Tcol_s) / Area1
+			Variable B_free = (Tall2_s - Tcol_s) / Area2
+
 			Variable Kb_s = NaN
 			if(A_free > 0 && B_free > 0 && AreaMin > 0)
 				Kb_s = (Tcol_s/AreaMin) * frameNumVal / (A_free * B_free)
@@ -4138,17 +4292,17 @@ Function ColCalculateKbByStateMol(sampleName1, sampleName2, waveSuffix)
 	
 	NVAR/Z gDstate = root:Dstate
 	NVAR/Z cHMM = root:cHMM
-	NVAR/Z FrameNum = root:FrameNum
-	NVAR/Z MeanIntGauss = root:MeanIntGauss
-	
+	NVAR FrameNum = root:FrameNum
+	NVAR MeanIntGauss = root:MeanIntGauss
+
 	Variable maxState = 0
 	if(NVAR_Exists(cHMM) && cHMM == 1 && NVAR_Exists(gDstate))
 		maxState = gDstate
 	endif
-	
-	Variable frameNumVal = NVAR_Exists(FrameNum) ? FrameNum : 1000
-	Variable meanInt = NVAR_Exists(MeanIntGauss) ? MeanIntGauss : 1
-	
+
+	Variable frameNumVal = FrameNum
+	Variable meanInt = MeanIntGauss
+
 	if(meanInt <= 0)
 		Printf "  WARNING: MeanIntGauss not set, skipping Kb_mol calculation\r"
 		SetDataFolder $savedDF
@@ -4210,7 +4364,9 @@ Function ColCalculateKbByStateMol(sampleName1, sampleName2, waveSuffix)
 			continue
 		endif
 		
-		Variable AreaMin = min(Area1, Area2)
+		NVAR/Z ColAreaMode = root:ColAreaMode
+		Variable areaMode = NVAR_Exists(ColAreaMode) ? ColAreaMode : 1  // 0=Min, 1=Max
+		Variable AreaMin = (areaMode == 0) ? min(Area1, Area2) : max(Area1, Area2)
 		
 		// 
 		for(s = 0; s <= maxState; s += 1)
@@ -4244,24 +4400,43 @@ Function ColCalculateKbByStateMol(sampleName1, sampleName2, waveSuffix)
 				endfor
 			endif
 			
-			// ECMcol_s = Σ(OsizeCol_Sn)
-			SetDataFolder $ecCellPath
-			String osizeColName = "OsizeCol_S" + num2str(s) + waveSuffix
-			Wave/Z OsizeColWave = $osizeColName
-			Variable Mcol_s = 0
-			if(WaveExists(OsizeColWave))
-				WaveStats/Q OsizeColWave
-				Mcol_s = V_sum
+			// EC: Mcol per channel — each channel's colocalized molecule count
+			// Mcol_ch1 = Σ(OsizeCol_Sn_C1E), Mcol_ch2 = Σ(OsizeCol_Sn_C2E)
+			// A_free uses Ch1's Mcol, B_free uses Ch2's Mcol (regardless of waveSuffix)
+			String ecCellPath1 = GetECBasePath() + ":" + origSampleName1 + ":" + origSampleName1 + num2str(m + 1)
+			String ecCellPath2 = GetECBasePath() + ":" + origSampleName2 + ":" + origSampleName2 + num2str(m + 1)
+
+			Variable Mcol_ch1 = 0
+			if(DataFolderExists(ecCellPath1))
+				SetDataFolder $ecCellPath1
+				String osizeC1Name = "OsizeCol_S" + num2str(s) + "_C1E"
+				Wave/Z OsizeC1Wave = $osizeC1Name
+				if(WaveExists(OsizeC1Wave))
+					WaveStats/Q OsizeC1Wave
+					Mcol_ch1 = V_sum
+				endif
 			endif
-			
-			// Kb_mol
-			// Kb_mol_s = (Mcol_s/AreaMin) * FrameNum / ((Mall1_s/Area1 - Mcol_s/AreaMin) * (Mall2_s/Area2 - Mcol_s/AreaMin))
-			Variable A_free = Mall1_s/Area1 - Mcol_s/AreaMin
-			Variable B_free = Mall2_s/Area2 - Mcol_s/AreaMin
-			
+
+			Variable Mcol_ch2 = 0
+			if(DataFolderExists(ecCellPath2))
+				SetDataFolder $ecCellPath2
+				String osizeC2Name = "OsizeCol_S" + num2str(s) + "_C2E"
+				Wave/Z OsizeC2Wave = $osizeC2Name
+				if(WaveExists(OsizeC2Wave))
+					WaveStats/Q OsizeC2Wave
+					Mcol_ch2 = V_sum
+				endif
+			endif
+
+			// Kb_mol: A_free/B_free use same-channel normalization (Mall - Mcol always >= 0)
+			// Mcol_complex = geometric mean of Ch1 and Ch2 coloc molecule counts
+			Variable Mcol_mean = sqrt(Mcol_ch1 * Mcol_ch2)
+			Variable A_free = (Mall1_s - Mcol_ch1) / Area1
+			Variable B_free = (Mall2_s - Mcol_ch2) / Area2
+
 			Variable Kb_mol_s = NaN
 			if(A_free > 0 && B_free > 0 && AreaMin > 0)
-				Kb_mol_s = (Mcol_s/AreaMin) * frameNumVal / (A_free * B_free)
+				Kb_mol_s = (Mcol_mean/AreaMin) * frameNumVal / (A_free * B_free)
 			endif
 			
 			// Matrix
@@ -4424,20 +4599,17 @@ Function ColCalculateOntimeSimple(sampleName, waveSuffix)
 	
 	NVAR/Z Dstate = root:Dstate
 	NVAR/Z cHMM = root:cHMM
-	NVAR/Z framerate = root:framerate
-	NVAR/Z MeanIntGauss = root:MeanIntGauss
-	
+	NVAR framerate = root:framerate
+	NVAR MeanIntGauss = root:MeanIntGauss
+
 	Variable maxState = 0
 	if(NVAR_Exists(cHMM) && cHMM == 1 && NVAR_Exists(Dstate))
 		maxState = Dstate
 	endif
-	
-	Variable fr = 1
-	if(NVAR_Exists(framerate))
-		fr = framerate
-	endif
-	
-	Variable meanInt = NVAR_Exists(MeanIntGauss) ? MeanIntGauss : 1
+
+	Variable fr = framerate
+
+	Variable meanInt = MeanIntGauss
 	
 	Variable numCells = CountDataFoldersInPath(ecBase, sampleName)
 	if(numCells == 0)
@@ -5237,19 +5409,19 @@ Function ColCalculateOnrateMol(sampleName, waveSuffix)
 	NVAR/Z cHMM = root:cHMM
 	NVAR/Z FrameNum = root:FrameNum
 	NVAR/Z framerate = root:framerate
-	NVAR/Z MeanIntGauss = root:MeanIntGauss
-	
+	NVAR MeanIntGauss = root:MeanIntGauss
+
 	Variable maxState = 0
 	if(NVAR_Exists(cHMM) && cHMM == 1 && NVAR_Exists(Dstate))
 		maxState = Dstate
 	endif
-	
-	Variable totalTime = 100  // 
+
+	Variable totalTime = 100  //
 	if(NVAR_Exists(FrameNum) && NVAR_Exists(framerate))
 		totalTime = FrameNum * framerate
 	endif
-	
-	Variable meanInt = NVAR_Exists(MeanIntGauss) ? MeanIntGauss : 1
+
+	Variable meanInt = MeanIntGauss
 	if(meanInt <= 0)
 		SetDataFolder $savedDF
 		return -1
@@ -5475,34 +5647,23 @@ Function ColOntimeFromList()
 	NVAR ColMinFrame = root:ColMinFrame
 	
 	// Colocalization
-	NVAR/Z ColTau1 = root:ColTau1
-	NVAR/Z ColTauScale = root:ColTauScale
-	NVAR/Z ColA1 = root:ColA1
-	NVAR/Z ColAScale = root:ColAScale
-	
-	// AutoAnalysisroot
-	NVAR InitialTau1_off = root:InitialTau1_off
-	NVAR TauScale_off = root:TauScale_off
-	NVAR InitialA1_off = root:InitialA1_off
-	NVAR AScale_off = root:AScale_off
-	
-	Variable saved_Tau1 = InitialTau1_off
-	Variable saved_TauScale = TauScale_off
-	Variable saved_A1 = InitialA1_off
-	Variable saved_AScale = AScale_off
-	
-	// Colocalizationroot
-	InitialTau1_off = NVAR_Exists(ColTau1) ? ColTau1 : 0.3
-	TauScale_off = NVAR_Exists(ColTauScale) ? ColTauScale : 10
-	InitialA1_off = NVAR_Exists(ColA1) ? ColA1 : 80
-	AScale_off = NVAR_Exists(ColAScale) ? ColAScale : 0.5
-	
+	NVAR ColTau1 = root:ColTau1
+	NVAR ColTauScale = root:ColTauScale
+	NVAR ColA1 = root:ColA1
+	NVAR ColAScale = root:ColAScale
+
+	// Colocalization fit parameters (passed as overrides — globals NOT modified)
+	Variable colTau1Val = ColTau1
+	Variable colTauScaleVal = ColTauScale
+	Variable colA1Val = ColA1
+	Variable colAScaleVal = ColAScale
+
 	Variable numPairs = min(numpnts(List_C1), numpnts(List_C2))
 	Variable i
-	
+
 	Print "=== Colocalization On-time (Off-rate) Analysis ==="
 	Printf "Using %s folder, ColMinFrame: %d\r", ecBase, ColMinFrame
-	Printf "Fit params: Tau1=%.3f, Scale_tau=%.1f, A1=%.1f, Scale_A=%.2f\r", InitialTau1_off, TauScale_off, InitialA1_off, AScale_off
+	Printf "Fit params: Tau1=%.3f, Scale_tau=%.1f, A1=%.1f, Scale_A=%.2f\r", colTau1Val, colTauScaleVal, colA1Val, colAScaleVal
 	
 	for(i = 0; i < numPairs; i += 1)
 		String sampleName1 = List_C1[i]
@@ -5511,17 +5672,11 @@ Function ColOntimeFromList()
 		Printf "Processing: %s vs %s\r", sampleName1, sampleName2
 		
 		// Ch1: waveSuffix
-		Duration_Gcount(sampleName1, basePath=ecBase, useMinFrame=ColMinFrame, waveSuffix="_C1E")
+		Duration_Gcount(sampleName1, basePath=ecBase, useMinFrame=ColMinFrame, waveSuffix="_C1E", overrideTau1=colTau1Val, overrideTauScale=colTauScaleVal, overrideA1=colA1Val, overrideAScale=colAScaleVal)
 		
 		// Ch2: 
-		Duration_Gcount(sampleName2, basePath=ecBase, useMinFrame=ColMinFrame, waveSuffix="_C2E")
+		Duration_Gcount(sampleName2, basePath=ecBase, useMinFrame=ColMinFrame, waveSuffix="_C2E", overrideTau1=colTau1Val, overrideTauScale=colTauScaleVal, overrideA1=colA1Val, overrideAScale=colAScaleVal)
 	endfor
-	
-	// AutoAnalysisroot
-	InitialTau1_off = saved_Tau1
-	TauScale_off = saved_TauScale
-	InitialA1_off = saved_A1
-	AScale_off = saved_AScale
 	
 	SetDataFolder $savedDF
 	return 0
@@ -6097,7 +6252,11 @@ Function StatResultMatrixEC(SampleName)
 			Make/O/D/N=(RowSize, ColumnSize) SEM = NaN
 			Make/O/D/N=(RowSize, ColumnSize) Npnts = NaN
 			
-			ImageTransform/METH=1 averageImage MWave
+			if(WaveDims(MWave) >= 3)
+				ImageTransform/METH=1 averageImage MWave
+			else
+				Printf "  WARNING: ImageTransform skipped in StatResultMatrixEC — %s is %dD (LayerSize=%d)\r", MName, WaveDims(MWave), LayerSize
+			endif
 			Wave/Z M_AveImage, M_StdvImage
 			
 			if(WaveExists(M_AveImage) && WaveExists(M_StdvImage))
@@ -6728,7 +6887,7 @@ static Function FitAverageIntensityHistogram(histWave, fitWaveName, numOligomers
 		for(jj = 0; jj < numOligomers; jj += 1)
 			amp = coef_temp[jj]
 			mean = coef_temp[meanIdx] * (jj + 1)
-			sd = coef_temp[sdIdx] * (jj + 1)  // SumGauss: sd * n
+			sd = coef_temp[sdIdx] * sqrt(jj + 1)  // SumGauss: sd * sqrt(n)
 			yVal += amp * exp(-((xVal - mean)^2) / (2 * sd^2))
 		endfor
 		fitW[k] = yVal
@@ -6766,9 +6925,9 @@ Function ColAvgIntensityFromList()
 	Variable numPairs = min(numpnts(List_C1), numpnts(List_C2))
 	Variable i, s, r, g, b
 	
-	// 
-	NVAR/Z numOligomers = root:numOligomers
-	Variable nOlig = NVAR_Exists(numOligomers) ? numOligomers : 1
+	//
+	NVAR numOligomers = root:numOligomers
+	Variable nOlig = numOligomers
 	
 	Print "=== Average Intensity Histogram ==="
 	
@@ -7564,33 +7723,22 @@ Function ColAvgOntimeFromList()
 	endif
 	
 	// Colocalization
-	NVAR/Z ColTau1 = root:ColTau1
-	NVAR/Z ColTauScale = root:ColTauScale
-	NVAR/Z ColA1 = root:ColA1
-	NVAR/Z ColAScale = root:ColAScale
-	
-	// AutoAnalysisroot
-	NVAR InitialTau1_off = root:InitialTau1_off
-	NVAR TauScale_off = root:TauScale_off
-	NVAR InitialA1_off = root:InitialA1_off
-	NVAR AScale_off = root:AScale_off
-	
-	Variable saved_Tau1 = InitialTau1_off
-	Variable saved_TauScale = TauScale_off
-	Variable saved_A1 = InitialA1_off
-	Variable saved_AScale = AScale_off
-	
-	// Colocalizationroot
-	InitialTau1_off = NVAR_Exists(ColTau1) ? ColTau1 : 0.05
-	TauScale_off = NVAR_Exists(ColTauScale) ? ColTauScale : 5
-	InitialA1_off = NVAR_Exists(ColA1) ? ColA1 : 80
-	AScale_off = NVAR_Exists(ColAScale) ? ColAScale : 0.5
+	NVAR ColTau1 = root:ColTau1
+	NVAR ColTauScale = root:ColTauScale
+	NVAR ColA1 = root:ColA1
+	NVAR ColAScale = root:ColAScale
+
+	// Colocalization fit parameters (display only — globals NOT modified)
+	Variable colTau1Val = ColTau1
+	Variable colTauScaleVal = ColTauScale
+	Variable colA1Val = ColA1
+	Variable colAScaleVal = ColAScale
 	
 	Variable numPairs = min(numpnts(List_C1), numpnts(List_C2))
 	Variable i, r, g, b
 	
 	Print "=== Average On-time Distribution ==="
-	Printf "Fit params: Tau1=%.3f, Scale_tau=%.1f, A1=%.1f, Scale_A=%.2f\r", InitialTau1_off, TauScale_off, InitialA1_off, AScale_off
+	Printf "Fit params: Tau1=%.3f, Scale_tau=%.1f, A1=%.1f, Scale_A=%.2f\r", colTau1Val, colTauScaleVal, colA1Val, colAScaleVal
 	
 	// Create Comparison folder
 	if(!DataFolderExists(ecCompPath))
@@ -7724,8 +7872,8 @@ Function ColAvgOntimeFromList()
 		
 		// Create time wave if not exists
 		if(!WaveExists(timeW))
-			NVAR/Z framerate = root:framerate
-			Variable fr = NVAR_Exists(framerate) ? framerate : 0.033
+			NVAR framerate = root:framerate
+			Variable fr = framerate
 			Make/O/N=(numpnts(avgW)) $timeName
 			Wave timeW = $timeName
 			timeW = (p + 1) * fr
@@ -7807,8 +7955,8 @@ Function ColAvgOntimeFromList()
 		endif
 		
 		if(!WaveExists(timeW))
-			NVAR/Z framerate = root:framerate
-			fr = NVAR_Exists(framerate) ? framerate : 0.033
+			NVAR framerate = root:framerate
+			fr = framerate
 			Make/O/N=(numpnts(avgW)) $timeName
 			Wave timeW = $timeName
 			timeW = (p + 1) * fr
@@ -7871,12 +8019,6 @@ Function ColAvgOntimeFromList()
 	
 	NVAR ColIndex = root:ColIndex
 	Printf "On-time averages saved to EC%d:Comparison\r", ColIndex
-	
-	// AutoAnalysisroot
-	InitialTau1_off = saved_Tau1
-	TauScale_off = saved_TauScale
-	InitialA1_off = saved_A1
-	AScale_off = saved_AScale
 	
 	SetDataFolder $savedDF
 	return 0
@@ -8026,8 +8168,8 @@ Function ColAvgOnrateFromList()
 		
 		// Create time wave if not exists
 		if(!WaveExists(s0Time))
-			NVAR/Z framerate = root:framerate
-			Variable fr = NVAR_Exists(framerate) ? framerate : 0.033
+			NVAR framerate = root:framerate
+			Variable fr = framerate
 			Make/O/N=(numpnts(s0Avg)) $s0TimeName
 			Wave s0Time = $s0TimeName
 			s0Time = (p + 1) * fr
@@ -8109,8 +8251,8 @@ Function ColAvgOnrateFromList()
 		endif
 		
 		if(!WaveExists(s0Time))
-			NVAR/Z framerate = root:framerate
-			fr = NVAR_Exists(framerate) ? framerate : 0.033
+			NVAR framerate = root:framerate
+			fr = framerate
 			Make/O/N=(numpnts(s0Avg)) $s0TimeName
 			Wave s0Time = $s0TimeName
 			s0Time = (p + 1) * fr
@@ -8199,18 +8341,18 @@ Function ColAvgOnrateFromList()
 			avgName = sampleName + "_CumOn_S" + num2str(s) + "_C1E_avg"
 			timeName = sampleName + "_TimeOn_S" + num2str(s) + "_C1E"
 			String semName = sampleName + "_CumOn_S" + num2str(s) + "_C1E_sem"
-			
+
 			Wave/Z avgW = $avgName
 			Wave/Z timeW = $timeName
 			Wave/Z semW = $semName
-			
+
 			if(!WaveExists(avgW))
 				continue
 			endif
-			
+
 			if(!WaveExists(timeW))
-				NVAR/Z framerate = root:framerate
-				fr = NVAR_Exists(framerate) ? framerate : 0.033
+				NVAR framerate = root:framerate
+				fr = framerate
 				Make/O/N=(numpnts(avgW)) $timeName
 				Wave timeW = $timeName
 				timeW = (p + 1) * fr
@@ -8291,18 +8433,18 @@ Function ColAvgOnrateFromList()
 			avgName = sampleName + "_CumOn_S" + num2str(s) + "_C2E_avg"
 			timeName = sampleName + "_TimeOn_S" + num2str(s) + "_C2E"
 			semName = sampleName + "_CumOn_S" + num2str(s) + "_C2E_sem"
-			
+
 			Wave/Z avgW = $avgName
 			Wave/Z timeW = $timeName
 			Wave/Z semW = $semName
-			
+
 			if(!WaveExists(avgW))
 				continue
 			endif
-			
+
 			if(!WaveExists(timeW))
-				NVAR/Z framerate = root:framerate
-				fr = NVAR_Exists(framerate) ? framerate : 0.033
+				NVAR framerate = root:framerate
+				fr = framerate
 				Make/O/N=(numpnts(avgW)) $timeName
 				Wave timeW = $timeName
 				timeW = (p + 1) * fr
@@ -8392,9 +8534,9 @@ Function VerifyECFolderConsistency(targetSample)
 		return -1
 	endif
 	
-	NVAR/Z Dstate = root:Dstate
-	Variable maxState = NVAR_Exists(Dstate) ? Dstate : 3
-	
+	NVAR Dstate = root:Dstate
+	Variable maxState = Dstate
+
 	Print "=============================================="
 	Print "EC Folder Consistency Verification"
 	Print "=============================================="
@@ -8642,9 +8784,9 @@ Function VerifyColFolderConsistency(targetSample)
 		return -1
 	endif
 	
-	NVAR/Z Dstate = root:Dstate
-	Variable maxState = NVAR_Exists(Dstate) ? Dstate : 3
-	
+	NVAR Dstate = root:Dstate
+	Variable maxState = Dstate
+
 	Print "=============================================="
 	Print "Col Folder Consistency Verification"
 	Print "=============================================="
@@ -8831,9 +8973,9 @@ Function ColCompareIntensity()
 	String savedDF = GetDataFolder(1)
 	String basePath = GetECBasePath() + ":"
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
-	
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
+
 	Print "=== Compare Colocalization Intensity (Mean Oligomer Size) ==="
 	
 	String channelList = GetOutputChannelList(1)
@@ -8873,9 +9015,9 @@ Function ColCompareDiffusion()
 	String savedDF = GetDataFolder(1)
 	String basePath = GetECBasePath() + ":"
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
-	
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
+
 	Print "=== Compare Colocalization Diffusion (D-state Population) ==="
 	
 	String channelList = GetOutputChannelList(1)
@@ -8915,8 +9057,8 @@ Function ColCompareOntime()
 	String savedDF = GetDataFolder(1)
 	String basePath = GetECBasePath() + ":"
 	
-	NVAR/Z gExpMax = root:ExpMax_off
-	Variable expMax = NVAR_Exists(gExpMax) ? gExpMax : 2
+	NVAR gExpMax = root:ExpMax_off
+	Variable expMax = gExpMax
 	
 	Print "=== Compare Colocalization On-Time (τ & Fraction) ==="
 	
@@ -8968,12 +9110,12 @@ End
 Function ColCompareOnrate()
 	String savedDF = GetDataFolder(1)
 	String basePath = GetECBasePath() + ":"
-	
-	NVAR/Z gDstate = root:Dstate
-	NVAR/Z ColWeightingMode = root:ColWeightingMode
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
-	Variable weighting = NVAR_Exists(ColWeightingMode) ? ColWeightingMode : 1  // 0=Particle, 1=Molecule
-	
+
+	NVAR gDstate = root:Dstate
+	NVAR ColWeightingMode = root:ColWeightingMode
+	Variable Dstate = gDstate
+	Variable weighting = ColWeightingMode  // 0=Particle, 1=Molecule
+
 	String weightStr = SelectString(weighting, "Particle", "Molecule")
 	Print "=== Compare Colocalization On-event Rate (" + weightStr + ") ==="
 	
@@ -9036,12 +9178,12 @@ End
 Function ColCompareOntimeSimple()
 	String savedDF = GetDataFolder(1)
 	String basePath = GetECBasePath() + ":"
-	
-	NVAR/Z gDstate = root:Dstate
-	NVAR/Z ColWeightingMode = root:ColWeightingMode
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
-	Variable weighting = NVAR_Exists(ColWeightingMode) ? ColWeightingMode : 1  // 0=Particle, 1=Molecule
-	
+
+	NVAR gDstate = root:Dstate
+	NVAR ColWeightingMode = root:ColWeightingMode
+	Variable Dstate = gDstate
+	Variable weighting = ColWeightingMode  // 0=Particle, 1=Molecule
+
 	String weightStr = SelectString(weighting, "Particle", "Molecule")
 	Print "=== Compare Colocalization On-time (Simple, " + weightStr + ") ==="
 	
@@ -9106,12 +9248,12 @@ End
 Function ColCompareReactionRate()
 	String savedDF = GetDataFolder(1)
 	String basePath = GetECBasePath() + ":"
-	
-	NVAR/Z gDstate = root:Dstate
-	NVAR/Z ColWeightingMode = root:ColWeightingMode
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
-	Variable weighting = NVAR_Exists(ColWeightingMode) ? ColWeightingMode : 1  // 0=Particle, 1=Molecule
-	
+
+	NVAR gDstate = root:Dstate
+	NVAR ColWeightingMode = root:ColWeightingMode
+	Variable Dstate = gDstate
+	Variable weighting = ColWeightingMode  // 0=Particle, 1=Molecule
+
 	String weightStr = SelectString(weighting, "Particle", "Molecule")
 	Print "=== Compare Colocalization k_on (" + weightStr + ") ==="
 	
@@ -9210,12 +9352,12 @@ End
 Function ColCompareOsizeCol()
 	String savedDF = GetDataFolder(1)
 	String basePath = GetECBasePath() + ":"
-	
-	NVAR/Z gDstate = root:Dstate
-	NVAR/Z ColWeightingMode = root:ColWeightingMode
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
-	Variable weighting = NVAR_Exists(ColWeightingMode) ? ColWeightingMode : 1  // 0=Particle, 1=Molecule
-	
+
+	NVAR gDstate = root:Dstate
+	NVAR ColWeightingMode = root:ColWeightingMode
+	Variable Dstate = gDstate
+	Variable weighting = ColWeightingMode  // 0=Particle, 1=Molecule
+
 	String weightStr = SelectString(weighting, "Particle", "Molecule")
 	Print "=== Compare Colocalization Oligomer Size (Simple, " + weightStr + ") ==="
 	
@@ -9272,12 +9414,12 @@ End
 Function ColCompareAbsoluteHMMP()
 	String savedDF = GetDataFolder(1)
 	String basePath = GetECBasePath() + ":"
-	
-	NVAR/Z gDstate = root:Dstate
-	NVAR/Z ColWeightingMode = root:ColWeightingMode
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
-	Variable weighting = NVAR_Exists(ColWeightingMode) ? ColWeightingMode : 1  // 0=Particle, 1=Molecule
-	
+
+	NVAR gDstate = root:Dstate
+	NVAR ColWeightingMode = root:ColWeightingMode
+	Variable Dstate = gDstate
+	Variable weighting = ColWeightingMode  // 0=Particle, 1=Molecule
+
 	String weightStr = SelectString(weighting, "Particle", "Molecule")
 	Print "=== Compare Absolute Colocalization HMMP (% of Total, " + weightStr + ") ==="
 	
@@ -9332,12 +9474,12 @@ End
 Function ColCompareSteps()
 	String savedDF = GetDataFolder(1)
 	String basePath = GetECBasePath() + ":"
-	
-	NVAR/Z gDstate = root:Dstate
-	NVAR/Z ColWeightingMode = root:ColWeightingMode
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
-	Variable weighting = NVAR_Exists(ColWeightingMode) ? ColWeightingMode : 1  // 0=Particle, 1=Molecule
-	
+
+	NVAR gDstate = root:Dstate
+	NVAR ColWeightingMode = root:ColWeightingMode
+	Variable Dstate = gDstate
+	Variable weighting = ColWeightingMode  // 0=Particle, 1=Molecule
+
 	String weightStr = SelectString(weighting, "Particle", "Molecule")
 	Print "=== Compare Colocalization Steps (" + weightStr + ") ==="
 	
@@ -9393,15 +9535,76 @@ Function ColCompareSteps()
 End
 
 // -----------------------------------------------------------------------------
+// ColCompareStepsDensity - ColSteps / Area [/um^2]
+// -----------------------------------------------------------------------------
+Function ColCompareStepsDensity()
+	String savedDF = GetDataFolder(1)
+	String basePath = GetECBasePath() + ":"
+
+	NVAR gDstate = root:Dstate
+	NVAR ColWeightingMode = root:ColWeightingMode
+	Variable Dstate = gDstate
+	Variable weighting = ColWeightingMode  // 0=Particle, 1=Molecule
+
+	String weightStr = SelectString(weighting, "Particle", "Molecule")
+	Print "=== Compare Colocalization Steps Density (" + weightStr + ") ==="
+
+	String channelList = GetOutputChannelList(1)
+	Variable chIdx, stt
+	String chSuffix, chLabel, stateName, sampleList
+	String matrixName, outputPrefix, winName, yLabel, graphTitle
+
+	for(chIdx = 0; chIdx < ItemsInList(channelList); chIdx += 1)
+		chSuffix = StringFromList(chIdx, channelList)
+		chLabel = GetChannelLabel(chSuffix)
+		sampleList = GetSampleListForChannel(GetChannelIndex(chSuffix))
+
+		for(stt = 0; stt <= Dstate; stt += 1)
+			stateName = GetDstateName(stt, Dstate)
+
+			if(weighting == 0)
+				matrixName = "ColStepsDensity_S" + num2str(stt) + chSuffix + "_m"
+				yLabel = "\\F'Arial'\\Z14Steps/Area\\B" + stateName + "\\M [/µm²]"
+			else
+				matrixName = "ColStepsMolDensity_S" + num2str(stt) + chSuffix + "_m"
+				yLabel = "\\F'Arial'\\Z14Mol Steps/Area\\B" + stateName + "\\M [/µm²]"
+			endif
+
+			outputPrefix = "ColStepsDensity_S" + num2str(stt) + chSuffix
+			winName = "ColCmp_StepsDens_S" + num2str(stt) + chSuffix
+			graphTitle = "Col Steps Density (" + weightStr + ") " + chLabel + " (S" + num2str(stt) + ": " + stateName + ")"
+
+			CreateComparisonSummaryPlotEx(basePath, matrixName, -1, outputPrefix, winName, yLabel, graphTitle, 1, stt, sampleList)
+
+			Print "  Compare Steps Density " + chLabel + " S" + num2str(stt) + " completed"
+		endfor
+
+		String allYLabel, allTitlePrefix
+		if(weighting == 0)
+			allYLabel = "\\F'Arial'\\Z14Steps/Area [/µm²]"
+			allTitlePrefix = "Col Steps Density (Particle)"
+			CreateColAllStatesGraph(basePath, "ColStepsDensity", chSuffix, allYLabel, allTitlePrefix, 1)
+		else
+			allYLabel = "\\F'Arial'\\Z14Mol Steps/Area [/µm²]"
+			allTitlePrefix = "Col Steps Density (Molecule)"
+			CreateColAllStatesGraph(basePath, "ColStepsMolDensity", chSuffix, allYLabel, allTitlePrefix, 1)
+		endif
+	endfor
+
+	SetDataFolder $savedDF
+	return 0
+End
+
+// -----------------------------------------------------------------------------
 // ColCompareParticleDensity - Particle Density
 // -----------------------------------------------------------------------------
 Function ColCompareParticleDensity()
 	String savedDF = GetDataFolder(1)
 	String basePath = GetECBasePath() + ":"
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
-	
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
+
 	Print "=== Compare Colocalization Particle Density ==="
 	
 	String channelList = GetOutputChannelList(1)
@@ -9445,9 +9648,9 @@ Function ColCompareKbByState()
 	String savedDF = GetDataFolder(1)
 	String basePath = GetECBasePath() + ":"
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
-	
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
+
 	Print "=== Compare Colocalization Kb by State (Particle) ==="
 	
 	String channelList = GetOutputChannelList(1)
@@ -9491,9 +9694,9 @@ Function ColCompareMolecularDensity()
 	String savedDF = GetDataFolder(1)
 	String basePath = GetECBasePath() + ":"
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
-	
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
+
 	Print "=== Compare Colocalization Molecular Density ==="
 	
 	String channelList = GetOutputChannelList(1)
@@ -9537,9 +9740,9 @@ Function ColCompareKbByStateMol()
 	String savedDF = GetDataFolder(1)
 	String basePath = GetECBasePath() + ":"
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
-	
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
+
 	Print "=== Compare Colocalization Kb by State (Molecule) ==="
 	
 	String channelList = GetOutputChannelList(1)
@@ -9584,20 +9787,20 @@ Function ColCompareAll()
 	Print "Colocalization Compare All Analysis"
 	Print "=========================================="
 	
-	// 
-	NVAR/Z ColWeightingMode = root:ColWeightingMode
-	NVAR/Z ColAffinityParam = root:ColAffinityParam
-	NVAR/Z ColIntensityMode = root:ColIntensityMode
-	NVAR/Z ColDiffusionMode = root:ColDiffusionMode
-	NVAR/Z ColOntimeMode = root:ColOntimeMode
-	NVAR/Z ColOnrateMode = root:ColOnrateMode
-	
-	Variable weighting = NVAR_Exists(ColWeightingMode) ? ColWeightingMode : 1  // 0=Particle, 1=Molecule
-	Variable affParam = NVAR_Exists(ColAffinityParam) ? ColAffinityParam : 0  // 0=Kb, 1=Density, 2=Distance
-	Variable intMode = NVAR_Exists(ColIntensityMode) ? ColIntensityMode : 0
-	Variable diffMode = NVAR_Exists(ColDiffusionMode) ? ColDiffusionMode : 0
-	Variable ontMode = NVAR_Exists(ColOntimeMode) ? ColOntimeMode : 0
-	Variable onrMode = NVAR_Exists(ColOnrateMode) ? ColOnrateMode : 0
+	//
+	NVAR ColWeightingMode = root:ColWeightingMode
+	NVAR ColAffinityParam = root:ColAffinityParam
+	NVAR ColIntensityMode = root:ColIntensityMode
+	NVAR ColDiffusionMode = root:ColDiffusionMode
+	NVAR ColOntimeMode = root:ColOntimeMode
+	NVAR ColOnrateMode = root:ColOnrateMode
+
+	Variable weighting = ColWeightingMode  // 0=Particle, 1=Molecule
+	Variable affParam = ColAffinityParam  // 0=Kb, 1=Density, 2=Distance
+	Variable intMode = ColIntensityMode
+	Variable diffMode = ColDiffusionMode
+	Variable ontMode = ColOntimeMode
+	Variable onrMode = ColOnrateMode
 	
 	String weightStr = SelectString(weighting, "Particle", "Molecule")
 	
@@ -9641,7 +9844,11 @@ Function ColCompareAll()
 		Print "--- D-state Steps (" + weightStr + ") ---"
 		ColCompareSteps()
 	endif
-	
+
+	// Steps Density (ColSteps / Area)
+	Print "--- Steps Density (" + weightStr + ") ---"
+	ColCompareStepsDensity()
+
 	// On-time
 	if(ontMode == 0)
 		Print "--- On-time (Simple, " + weightStr + ") ---"
@@ -9692,10 +9899,10 @@ Function CreateColAllStatesGraph(basePath, matrixPrefix, chSuffix, yLabel, title
 	
 	String savedDF = GetDataFolder(1)
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
-	
-	// 
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
+
+	//
 	Variable chIdx = GetChannelIndex(chSuffix)
 	String sampleList = GetSampleListForChannel(chIdx)
 	Variable numSamples = ItemsInList(sampleList)

@@ -36,18 +36,12 @@ Function CalculateMSD(SampleName, [maxLag, basePath, waveSuffix])
 	NVAR framerate = root:framerate
 	NVAR/Z Dstate = root:Dstate
 	NVAR/Z cHMM = root:cHMM
-	NVAR/Z cMoveAve = root:cMoveAve
-	NVAR/Z ThresholdMSD = root:ThresholdMSD
-	
-	// 
-	Variable useMoveAve = 1
-	if(NVAR_Exists(cMoveAve))
-		useMoveAve = cMoveAve
-	endif
-	Variable threshold = 1  // 1%
-	if(NVAR_Exists(ThresholdMSD))
-		threshold = ThresholdMSD
-	endif
+	NVAR cMoveAve = root:cMoveAve
+	NVAR ThresholdMSD = root:ThresholdMSD
+
+	//
+	Variable useMoveAve = cMoveAve
+	Variable threshold = ThresholdMSD
 	
 	Variable numFolders
 	if(StringMatch(basePath, "root"))
@@ -584,7 +578,7 @@ static Function SafeFitMSD(msdWave, timeWave, coefWave, fitFunc, startP, endP, h
 	Variable V_FitError = 0
 	Variable V_FitQuitReason = 0
 	Variable maxRetries = 3
-	Variable retry
+	Variable retry, hIdx
 	
 	// 
 	Duplicate/FREE coefWave, originalCoef
@@ -620,6 +614,12 @@ static Function SafeFitMSD(msdWave, timeWave, coefWave, fitFunc, startP, endP, h
 		// 
 		if(retry < maxRetries - 1)
 			coefWave = originalCoef * (1 + 0.5 * (retry + 1))  // 
+			// holdStr: 
+			for(hIdx = 0; hIdx < strlen(holdStr); hIdx += 1)
+				if(CmpStr(holdStr[hIdx], "1") == 0)
+					coefWave[hIdx] = originalCoef[hIdx]
+				endif
+			endfor
 		endif
 	endfor
 	
@@ -805,12 +805,14 @@ Function DisplayDiffusionResultsGraph(SampleName)
 	Printf "=== %s Diffusion Results ===\r", SampleName
 	Printf "D = %.4f ± %.4f µm²/s (n=%d)\r", V_avg, V_sdev, V_npnts
 	
-	// 
-	Make/O/N=20 D_Hist
-	Histogram/B={0, V_avg/5, 20} fit_D_valid, D_Hist
-	
-	Make/O/N=20 D_Hist_x
-	D_Hist_x = V_avg/5 * (p + 0.5)
+	//
+	NVAR DhistBin = root:DhistBin
+	NVAR DhistDim = root:DhistDim
+	Make/O/N=(DhistDim) D_Hist
+	Histogram/B={0, DhistBin, DhistDim} fit_D_valid, D_Hist
+
+	Make/O/N=(DhistDim) D_Hist_x
+	D_Hist_x = DhistBin * (p + 0.5)
 	
 	// 
 	Display/K=1 D_Hist vs D_Hist_x
@@ -845,40 +847,33 @@ Function CalculateStepSizeHistogramHMM(SampleName, [basePath, useDeltaTMin, useD
 	NVAR framerate = root:framerate
 	NVAR/Z Dstate = root:Dstate
 	NVAR/Z cHMM = root:cHMM
-	NVAR/Z StepDeltaTMin = root:StepDeltaTMin
-	NVAR/Z StepDeltaTMax = root:StepDeltaTMax
-	NVAR/Z cMoveAve = root:cMoveAve
+	NVAR StepDeltaTMin = root:StepDeltaTMin
+	NVAR StepDeltaTMax = root:StepDeltaTMax
+	NVAR cMoveAve = root:cMoveAve
 	NVAR/Z cSuppressOutput = root:cSuppressOutput
 	Variable suppressOutput = NVAR_Exists(cSuppressOutput) ? cSuppressOutput : 0
-	
-	// 
+
+	//
 	if(ParamIsDefault(basePath))
 		basePath = "root"
 	endif
 	if(ParamIsDefault(waveSuffix))
 		waveSuffix = ""
 	endif
-	
-	// 
-	Variable deltaTMin = 1, deltaTMax = 1
+
+	//
+	Variable deltaTMin, deltaTMax
 	if(ParamIsDefault(useDeltaTMin))
-		if(NVAR_Exists(StepDeltaTMin))
-			deltaTMin = StepDeltaTMin
-		endif
+		deltaTMin = StepDeltaTMin
 	else
 		deltaTMin = useDeltaTMin
 	endif
 	if(ParamIsDefault(useDeltaTMax))
-		if(NVAR_Exists(StepDeltaTMax))
-			deltaTMax = StepDeltaTMax
-		endif
+		deltaTMax = StepDeltaTMax
 	else
 		deltaTMax = useDeltaTMax
 	endif
-	Variable useMoveAve = 1
-	if(NVAR_Exists(cMoveAve))
-		useMoveAve = cMoveAve
-	endif
+	Variable useMoveAve = cMoveAve
 	
 	Variable numFolders = CountDataFoldersInPath(basePath, SampleName)
 	Variable m, s, i, maxState, deltaT
@@ -1168,17 +1163,17 @@ Function DisplayStepSizeHistogramHMM(SampleName, [basePath, useDeltaTMin, useDel
 	
 	NVAR/Z Dstate = root:Dstate
 	NVAR/Z cHMM = root:cHMM
-	NVAR/Z StepDeltaTMin = root:StepDeltaTMin
-	NVAR/Z StepDeltaTMax = root:StepDeltaTMax
-	
-	// 
+	NVAR StepDeltaTMin = root:StepDeltaTMin
+	NVAR StepDeltaTMax = root:StepDeltaTMax
+
+	//
 	if(ParamIsDefault(basePath))
 		basePath = "root"
 	endif
 	if(ParamIsDefault(waveSuffix))
 		waveSuffix = ""
 	endif
-	
+
 	// HMM
 	Variable isHMM = 0
 	Variable maxState = 0
@@ -1186,20 +1181,16 @@ Function DisplayStepSizeHistogramHMM(SampleName, [basePath, useDeltaTMin, useDel
 		isHMM = 1
 		maxState = Dstate
 	endif
-	
+
 	// Δt
-	Variable deltaTMin = 1, deltaTMax = 1
+	Variable deltaTMin, deltaTMax
 	if(ParamIsDefault(useDeltaTMin))
-		if(NVAR_Exists(StepDeltaTMin))
-			deltaTMin = StepDeltaTMin
-		endif
+		deltaTMin = StepDeltaTMin
 	else
 		deltaTMin = useDeltaTMin
 	endif
 	if(ParamIsDefault(useDeltaTMax))
-		if(NVAR_Exists(StepDeltaTMax))
-			deltaTMax = StepDeltaTMax
-		endif
+		deltaTMax = StepDeltaTMax
 	else
 		deltaTMax = useDeltaTMax
 	endif
@@ -1379,44 +1370,35 @@ Function FitStepSizeDistributionHMM(SampleName, numStates, [basePath, useDeltaTM
 	NVAR framerate = root:framerate
 	NVAR/Z Dstate = root:Dstate
 	NVAR/Z cHMM = root:cHMM
-	NVAR/Z StepDeltaTMin = root:StepDeltaTMin
-	NVAR/Z StepDeltaTMax = root:StepDeltaTMax
-	NVAR/Z StepFitD1 = root:StepFitD1
-	NVAR/Z StepFitScale = root:StepFitScale
-	
-	// 
+	NVAR StepDeltaTMin = root:StepDeltaTMin
+	NVAR StepDeltaTMax = root:StepDeltaTMax
+	NVAR StepFitD1 = root:StepFitD1
+	NVAR StepFitScale = root:StepFitScale
+
+	//
 	if(ParamIsDefault(basePath))
 		basePath = "root"
 	endif
 	if(ParamIsDefault(waveSuffix))
 		waveSuffix = ""
 	endif
-	
+
 	// Δt
-	Variable deltaTMin = 1, deltaTMax = 1
+	Variable deltaTMin, deltaTMax
 	if(ParamIsDefault(useDeltaTMin))
-		if(NVAR_Exists(StepDeltaTMin))
-			deltaTMin = StepDeltaTMin
-		endif
+		deltaTMin = StepDeltaTMin
 	else
 		deltaTMin = useDeltaTMin
 	endif
 	if(ParamIsDefault(useDeltaTMax))
-		if(NVAR_Exists(StepDeltaTMax))
-			deltaTMax = StepDeltaTMax
-		endif
+		deltaTMax = StepDeltaTMax
 	else
 		deltaTMax = useDeltaTMax
 	endif
 	
 	// 
-	Variable initD1 = 0.01, initScale = 5
-	if(NVAR_Exists(StepFitD1))
-		initD1 = StepFitD1
-	endif
-	if(NVAR_Exists(StepFitScale))
-		initScale = StepFitScale
-	endif
+	Variable initD1 = StepFitD1
+	Variable initScale = StepFitScale
 	
 	// HMM
 	Variable isHMM = 0
@@ -1643,28 +1625,18 @@ Function FitStepSizeWithAIC_NonHMM(SampleName, minStates, maxStates)
 	endif
 	
 	NVAR framerate = root:framerate
-	NVAR/Z StepDeltaTMin = root:StepDeltaTMin
-	NVAR/Z StepDeltaTMax = root:StepDeltaTMax
-	NVAR/Z StepFitD1 = root:StepFitD1
-	NVAR/Z StepFitScale = root:StepFitScale
-	
+	NVAR StepDeltaTMin = root:StepDeltaTMin
+	NVAR StepDeltaTMax = root:StepDeltaTMax
+	NVAR StepFitD1 = root:StepFitD1
+	NVAR StepFitScale = root:StepFitScale
+
 	// Δt
-	Variable deltaTMin = 1, deltaTMax = 1
-	if(NVAR_Exists(StepDeltaTMin))
-		deltaTMin = StepDeltaTMin
-	endif
-	if(NVAR_Exists(StepDeltaTMax))
-		deltaTMax = StepDeltaTMax
-	endif
+	Variable deltaTMin = StepDeltaTMin
+	Variable deltaTMax = StepDeltaTMax
 	
 	// 
-	Variable initD1 = 0.002, initScale = 5
-	if(NVAR_Exists(StepFitD1))
-		initD1 = StepFitD1
-	endif
-	if(NVAR_Exists(StepFitScale))
-		initScale = StepFitScale
-	endif
+	Variable initD1 = StepFitD1
+	Variable initScale = StepFitScale
 	
 	Variable numFolders = CountDataFolders(SampleName)
 	Variable m, n, i, j, deltaT
@@ -1960,13 +1932,13 @@ Function CreateMSDHeatmap(SampleName)
 	
 	NVAR/Z Dstate = root:Dstate
 	NVAR/Z cHMM = root:cHMM
-	NVAR/Z StepDeltaTMin = root:StepDeltaTMin
-	NVAR/Z StepDeltaTMax = root:StepDeltaTMax
-	NVAR/Z StepHistBin = root:StepHistBin
-	NVAR/Z StepHistDim = root:StepHistDim
+	NVAR StepDeltaTMin = root:StepDeltaTMin
+	NVAR StepDeltaTMax = root:StepDeltaTMax
+	NVAR StepHistBin = root:StepHistBin
+	NVAR StepHistDim = root:StepHistDim
 	NVAR/Z HeatmapMin = root:HeatmapMin
 	NVAR/Z HeatmapMax = root:HeatmapMax
-	
+
 	// SVAR
 	SVAR Color0 = root:Color0
 	SVAR Color1 = root:Color1
@@ -1974,24 +1946,14 @@ Function CreateMSDHeatmap(SampleName)
 	SVAR Color3 = root:Color3
 	SVAR Color4 = root:Color4
 	SVAR Color5 = root:Color5
-	
+
 	// Δt
-	Variable deltaTMin = 1, deltaTMax = 5
-	if(NVAR_Exists(StepDeltaTMin))
-		deltaTMin = StepDeltaTMin
-	endif
-	if(NVAR_Exists(StepDeltaTMax))
-		deltaTMax = StepDeltaTMax
-	endif
-	
-	// 
-	Variable stepBin = 0.01, stepDim = 100
-	if(NVAR_Exists(StepHistBin))
-		stepBin = StepHistBin
-	endif
-	if(NVAR_Exists(StepHistDim))
-		stepDim = StepHistDim
-	endif
+	Variable deltaTMin = StepDeltaTMin
+	Variable deltaTMax = StepDeltaTMax
+
+	//
+	Variable stepBin = StepHistBin
+	Variable stepDim = StepHistDim
 	
 	// 
 	Variable Imin = 0, Imax = 0
@@ -2724,9 +2686,9 @@ Function CreateAverageAlignedTrajectory(SampleName)
 	NVAR Dstate = root:Dstate
 	
 	// 
-	Variable minSteps = 20
-	Variable totalSteps = 2000
-	Variable axisRange = 1.0
+	Variable minSteps = 10
+	Variable totalSteps = 1000
+	Variable axisRange = 2.0
 	Variable lThresh = 1.0
 	ControlInfo/W=SMI_MainPanel tab1_sv_minsteps
 	if(V_flag != 0)

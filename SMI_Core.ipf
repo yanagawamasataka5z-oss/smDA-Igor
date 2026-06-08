@@ -36,28 +36,35 @@ Function InitializeGlobalParameters()
 	
 	// =====  =====
 	Variable/G root:framerate = 0.03		//  [sec/frame]
-	Variable/G root:FrameNum = 100			// 
+	Variable/G root:FrameNum = 100			//
 	Variable/G root:scale = 0.065			//  [um/pix]
 	Variable/G root:ROIsize = 12			// ROI [pix]
-	Variable/G root:MinFrame = 15			// 
-	Variable/G root:PixNum = 512			// 
-	
-	// 
+	Variable/G root:MinFrame = 12			//
+	Variable/G root:PixNum = 512			//
+
+	//
 	Variable/G root:ExCoef = 0.23			//  [e-/count]
-	Variable/G root:QE = 0.80				// 
+	Variable/G root:QE = 0.80				//
 	Variable/G root:IntensityMode = 1		// Intensity: 0=Raw Intensity, 1=Photon number
 	
 	// =====  =====
 	Variable/G root:cAAS = 0				// AAS
 	Variable/G root:cAAS2 = 0				// AAS v2
-	Variable/G root:cAAS4 = 1				// AAS v4v4, v2*ON
+	Variable/G root:cAAS4 = 1				// AAS v4
 	Variable/G root:cHMM = 1				// HMMHMM*ON
 	Variable/G root:Dstate = 3				// HMM1-5*3
 	Variable/G root:MaxSegment = 0			// Segmentation0=
 	Variable/G root:ctif = 0				// TIF
 	Variable/G root:cDXT = 0				// DXT
+	Variable/G root:cTrackMate = 0			// TrackMate format
+	Variable/G root:cVBSPT = 0				// VBSPT format
+	Variable/G root:cImage = 0				// Image mode
 	Variable/G root:cUseUserDefinedName = 0	// SampleName0=
 	String/G root:gSampleNameInput = "Sample1"	// SampleNameCommonLoad
+	Variable/G root:ROIavg = 0				// ROI average
+	Variable/G root:Kfunc = 1				// K-function
+	Variable/G root:PVHistBin = 50			// Pixel Value histogram bin
+	Variable/G root:PVHistDim = 200			// Pixel Value histogram dim
 	
 	// ===== - ON =====
 	// Diffusion
@@ -78,6 +85,13 @@ Function InitializeGlobalParameters()
 	Variable/G root:cStatOutputCmdLine = 1	// 
 	Variable/G root:cStatOutputGraph = 1	// 
 	Variable/G root:cStatOutputTable = 1	// 
+	
+	// Significance bracket display parameters
+	Variable/G root:StatBracket_XOffset = 0.5	// X offset (shift brackets right)
+	Variable/G root:StatBracket_TextGap = 0.11	// gap between line and * (fraction of globalMax)
+	Variable/G root:StatBracket_StartY = 1.15	// first bracket Y (fraction of globalMax)
+	Variable/G root:StatBracket_StepY = 0.12	// vertical step between brackets (fraction of globalMax)
+	Variable/G root:StatBracket_TickH = 0.05	// tick height (fraction of globalMax)
 	Variable/G root:cSuppressOutput = 1	// 1=, 0=*ON
 	// Data Loading - Trajectory
 	Variable/G root:cRunTrajectory = 1		// TrajectoryON
@@ -86,7 +100,8 @@ Function InitializeGlobalParameters()
 	// =====  =====
 	// Panel.ipf CreateColocalizationTab()
 	Variable/G root:ColIndex = 1			// Col1/EC1, Col2/EC2, ...
-	
+	Variable/G root:ColAreaMode = 1			// Density area: 0=Min, 1=Max
+
 	// =====  =====
 	Variable/G root:cSumGauss = 0			// Sum Gauss
 	Variable/G root:cSumLogNorm = 0		// Sum Log-normal
@@ -99,7 +114,7 @@ Function InitializeGlobalParameters()
 	Variable/G root:SDIntLognorm = 0.2		// LogNorm SD*0.2
 	Variable/G root:IhistBin = 25			//  *25
 	Variable/G root:IhistDim = 200			//  *200
-	Variable/G root:MinOligomerSize = 2	// AIC *2
+	Variable/G root:MinOligomerSize = 8	// AIC *8
 	Variable/G root:MaxOligomerSize = 8	// AIC *8
 	Variable/G root:cSetIntensityRange = 0	// 
 	Variable/G root:cSetIntPN = 0			// 
@@ -113,10 +128,10 @@ Function InitializeGlobalParameters()
 	Variable/G root:ThresholdMSD = 1		// MSD [%] *1%
 	Variable/G root:AreaThresholdMSD = 5	// MSD [%] (ThresholdMSD) - 
 	Variable/G root:DavgFrame = 10			// 
-	Variable/G root:InitialD0 = 0.05		// D0 [um^2/s]
+	Variable/G root:InitialD0 = 0.1			// D0 [um^2/s]
 	Variable/G root:InitialAlpha = 1		// Alpha
 	Variable/G root:AlphaFix = 0			// Alpha (1=alpha)
-	Variable/G root:InitialL = 0.1			// L [um]
+	Variable/G root:InitialL = 0.2			// L [um]
 	Variable/G root:InitialEpsilon = 0.005	// Epsilon [um^2]
 	Variable/G root:Efix = 1				// EpsilonON
 	Variable/G root:DhistBin = 0.065		//  [um] (= scale)
@@ -139,8 +154,10 @@ Function InitializeGlobalParameters()
 	
 	// =====  =====
 	Variable/G root:LPhistBin = 1			//  [nm]
-	Variable/G root:LPhistDim = 40			// 
-	
+	Variable/G root:LPhistDim = 40			//
+	Variable/G root:RHistBin = 0.1			// R (Particle Density) [um]
+	Variable/G root:RHistDim = 200			// R (Particle Density)
+
 	// =====  =====
 	String/G root:Color0 = "grays"			// S0
 	String/G root:Color1 = "cyan"			// S1
@@ -166,13 +183,10 @@ Function InitializeGlobalParameters()
 	Variable/G root:InitialD_D5 = 1
 	
 	// =====  =====
-	Variable/G root:DensityHistBin = 0.1	//  [um]
-	Variable/G root:DensityHistDim = 1000	// 
-	Variable/G root:DensityFrameAverage = 10	// 
+	// Density parameters: initialized by Panel (do not use Variable/G here)
 	
 	// ===== Ripley K =====
-	Variable/G root:RHistBin = 0.1		//  [um]
-	Variable/G root:RHistDim = 1000		// 
+	// R histogram parameters: initialized by Panel (do not use Variable/G here)
 	Variable/G root:DSmoothing = 20		// 
 	Variable/G root:DensityStartFrame = 20	// Density
 	Variable/G root:DensityEndFrame = 25	// Density
@@ -201,7 +215,7 @@ Function InitializeGlobalParameters()
 	
 	// ===== On-rate =====
 	Variable/G root:cUseDensityForOnrate = 1	// Density (0=, 1=Density)
-	Variable/G root:OnArea = 1108			// On-rate [um^2] (512x512 pix)
+	Variable/G root:OnArea = (512 * 0.065) * (512 * 0.065)	// On-rate [um^2] = (PixNum * scale)^2
 	Variable/G root:InitialVon = 1			// Von
 	Variable/G root:InitialTauon = 5		// Tauon [s]5
 	Variable/G root:InitialStarton = 1		// Starton [frame]
@@ -214,15 +228,15 @@ Function InitializeGlobalParameters()
 	Variable/G root:AreaY0_off = 0			// Off-rateY0 [um]
 	Variable/G root:AreaWidth_off = 0		// Off-rate [um]
 	Variable/G root:AreaLong_off = 0		// Off-rate [um]
-	Variable/G root:ExpMin_off = 2			// 
-	Variable/G root:ExpMax_off = 2			// 
+	Variable/G root:ExpMin_off = 1			//
+	Variable/G root:ExpMax_off = 1			//
 	Variable/G root:MaxExpComponents = 5	// AIC
 	Variable/G root:TrajHistBin = 0.1		//  [s]
 	Variable/G root:TrajHistMax = 10		//  [s]
 	Variable/G root:FitType = 2				// MSD (0:free, 1:confined, 2:confined+err, 3:anomalous, 4:anomalous+err)
 	// Off-rateTau1:, TauScale:
-	Variable/G root:InitialTau1_off = 0.1	//  [s]
-	Variable/G root:TauScale_off = 10		// Tau (Tau_n = Tau1 * Scale^(n-1))
+	Variable/G root:InitialTau1_off = 0.5	//  [s]
+	Variable/G root:TauScale_off = 5		// Tau (Tau_n = Tau1 * Scale^(n-1))
 	Variable/G root:InitialA1_off = 80		// A1 [%]
 	Variable/G root:AScale_off = 0.5		// A (A_n = A1 * Scale^(n-1))
 	
@@ -236,14 +250,10 @@ Function InitializeGlobalParameters()
 	Variable/G root:PALM_DensityBin = 0.5	//  [um]
 	Variable/G root:PALM_FrameAvg = 10		// 
 	// 
-	Variable/G root:AreaX0_PALM = 0		// X0 [um]
-	Variable/G root:AreaY0_PALM = 0		// Y0 [um]
-	Variable/G root:AreaWidth_PALM = 10	//  [um]
-	Variable/G root:AreaLong_PALM = 10		//  [um]
-	Variable/G root:AreaGuard_PALM = 1		//  [um]
+	// Area parameters: initialized by SMI_Panel.ipf InitGlobalIfMissing
+	// (Do not use Variable/G here — it overwrites user-changed values)
 	Variable/G root:cPALM_Scan = 0			// PALM
 	Variable/G root:cROIavg = 0			// ROI
-	Variable/G root:SampleTH_PALM = 0		// 
 	Variable/G root:cKfunc = 0				// K
 	Variable/G root:cClustering = 0		// 
 	Variable/G root:PALM_KfuncRmax = 1.0	// K [um]
@@ -352,21 +362,21 @@ Function SetBarGraphStyle([fontSize, rotateLabels, catGap, aspectRatio])
 End
 
 // -----------------------------------------------------------------------------
-// SetBarGraphSizeByItems - 
-//  root:GraphWidth 
+// SetBarGraphSizeByItems - Apply standard graph sizing to bar charts
+// Uses Aspect ratio (1:1.618) for consistent, resizable display
+// Note: params (numItems, baseWidth, widthPerItem, maxWidth) retained for
+//       call-site compatibility but no longer used
 // -----------------------------------------------------------------------------
 Function SetBarGraphSizeByItems(numItems, [baseWidth, widthPerItem, maxWidth])
 	Variable numItems, baseWidth, widthPerItem, maxWidth
 	
-	// 150
-	NVAR/Z gGraphWidth = root:GraphWidth
-	Variable graphWidth = NVAR_Exists(gGraphWidth) ? gGraphWidth : 150
+	// Set initial window size large enough (matches standard graph window)
+	// Then apply Aspect ratio so plot area is resizable by drag
+	GetWindow kwTopWin, wsize
+	MoveWindow V_left, V_top, V_left + 500, V_top + 350
 	
-	// 0.618
-	Variable graphHeight = graphWidth * 0.618
-	
-	// 
-	ModifyGraph width=graphWidth, height=graphHeight
+	// Aspect ratio: same as all other graphs (resizable by drag)
+	ModifyGraph width={Aspect, 1.618}
 	
 	// Y
 	ModifyGraph lowTrip(left)=0.0001
@@ -818,6 +828,7 @@ Function CountDataFolders(SampleName)
 		return 0
 	EndIf
 	
+	String savedDF = GetDataFolder(1)
 	SetDataFolder root:$(SampleName)
 	Variable totalFolders = CountObjects("", 4)
 	Variable validCount = 0
@@ -857,7 +868,7 @@ Function CountDataFolders(SampleName)
 		EndIf
 	endfor
 	
-	SetDataFolder root:
+	SetDataFolder $savedDF
 	return validCount
 End
 
@@ -1278,11 +1289,13 @@ Function/S GetAnalyzedSampleList()
 	
 	for(i = 0; i < numFolders; i += 1)
 		folderName = GetIndexedObjName(":", 4, i)
-		// 
 		if(IsSystemFolder(folderName))
 			continue
 		endif
-		// 
+		// Exclude Index_* folders (drift correction index data)
+		if(StringMatch(folderName, "Index_*") == 1)
+			continue
+		endif
 		if(strlen(sampleList) > 0)
 			sampleList += ";"
 		endif
@@ -1298,8 +1311,29 @@ Function/S GetAnalyzedSampleList()
 	return sampleList
 End
 
-// -----------------------------------------------------------------------------
-// StatsResultsMatrix - 
+// Get list of Index_* folders (for drift correction index selection)
+Function/S GetIndexFolderList()
+	String indexList = ""
+	String currentDF = GetDataFolder(1)
+	
+	SetDataFolder root:
+	Variable numFolders = CountObjects(":", 4)
+	Variable i
+	String folderName
+	
+	for(i = 0; i < numFolders; i += 1)
+		folderName = GetIndexedObjName(":", 4, i)
+		if(StringMatch(folderName, "Index_*") == 1)
+			if(strlen(indexList) > 0)
+				indexList += ";"
+			endif
+			indexList += folderName
+		endif
+	endfor
+	
+	SetDataFolder $currentDF
+	return indexList
+End
 // WaveMatrix/Results
 // 
 // 
@@ -1533,7 +1567,11 @@ Function StatsResultsMatrix(basePath, sampleName, waveNameList)
 				Wave SEM = $semName
 				Wave Npnts = $nName
 				
-				ImageTransform/METH=1 averageImage Matrix
+				if(WaveDims(Matrix) >= 3)
+					ImageTransform/METH=1 averageImage Matrix
+				else
+					Printf "  WARNING: ImageTransform skipped in StatsResultsMatrix — %s is %dD (LayerSize=%d)\r", waveName, WaveDims(Matrix), LayerSize
+				endif
 				Wave/Z M_AveImage, M_StdvImage
 				
 				if(WaveExists(M_AveImage) && WaveExists(M_StdvImage))
@@ -1622,10 +1660,14 @@ Function/S GetSampleListFromBase(basePath)
 				String smplA = List_C1[i]
 				String smplB = List_C2[i]
 				if(strlen(smplA) > 0 && FindListItem(smplA, sampleList) < 0)
-					sampleList += smplA + ";"
+					if(StringMatch(smplA, "Tif_*") == 0)
+						sampleList += smplA + ";"
+					endif
 				endif
 				if(strlen(smplB) > 0 && FindListItem(smplB, sampleList) < 0)
-					sampleList += smplB + ";"
+					if(StringMatch(smplB, "Tif_*") == 0)
+						sampleList += smplB + ";"
+					endif
 				endif
 			endfor
 			return sampleList
@@ -1964,7 +2006,7 @@ Function/S ExtractAllSamplesToComparisonEx(basePath, matrixName, rowIndex, outpu
 		outputPrefix = matrixName
 	endif
 	
-	// Comparison
+	// Comparison folder
 	EnsureComparisonFolderForBase(basePath)
 	String compPath = GetComparisonPathFromBase(basePath)
 	

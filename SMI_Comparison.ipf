@@ -28,6 +28,14 @@ Function/S GetSampleFolderList()
 		if(IsSystemFolder(folderName))
 			continue
 		endif
+		// Exclude Index_* folders (fiducial / drift correction data)
+		if(StringMatch(folderName, "Index_*") == 1)
+			continue
+		endif
+		// Exclude Tif_* folders (imported external images)
+		if(StringMatch(folderName, "Tif_*") == 1)
+			continue
+		endif
 		folderList += folderName + ";"
 	endfor
 	
@@ -483,19 +491,19 @@ Function AverageMSD(stateNum)
 	String MSD_time_name = "MSD_time_" + stateStr + "_m_avg"
 	
 	// : DiffusionAreaRangeMSD
-	NVAR/Z AreaRangeMSD = root:AreaRangeMSD
-	Variable cutoffPt = NVAR_Exists(AreaRangeMSD) ? AreaRangeMSD : 10
-	
-	// 
+	NVAR AreaRangeMSD = root:AreaRangeMSD
+	Variable cutoffPt = AreaRangeMSD
+
+	//
 	String winName = "AverageMSD_" + stateStr
 	DoWindow/K $winName
 	Display/K=1/N=$winName
-	
-	// 
-	NVAR/Z InitialD0 = root:InitialD0
-	NVAR/Z InitialL = root:InitialL
-	Variable D0init = NVAR_Exists(InitialD0) ? InitialD0 : 0.05
-	Variable Linit = NVAR_Exists(InitialL) ? InitialL : 0.1
+
+	//
+	NVAR InitialD0 = root:InitialD0
+	NVAR InitialL = root:InitialL
+	Variable D0init = InitialD0
+	Variable Linit = InitialL
 	
 	Variable i, f, r, g, b
 	Variable RowSize
@@ -603,8 +611,8 @@ Function AverageMSD(stateNum)
 	SetAxis left 0, *
 	
 	// 
-	NVAR/Z DstateVar = root:Dstate
-	Variable totalStates = NVAR_Exists(DstateVar) ? DstateVar : 4
+	NVAR DstateVar = root:Dstate
+	Variable totalStates = DstateVar
 	String stateName = GetDstateName(stateNum, totalStates)
 	DoWindow/T $winName, "Average MSD-Δt (" + stateName + ")"
 	
@@ -625,22 +633,22 @@ Function AverageMSDPerSample(smpl)
 	
 	NVAR/Z Dstate = root:Dstate
 	NVAR/Z cHMM = root:cHMM
-	NVAR/Z AreaRangeMSD = root:AreaRangeMSD
-	NVAR/Z framerate = root:framerate
-	
+	NVAR AreaRangeMSD = root:AreaRangeMSD
+	NVAR framerate = root:framerate
+
 	Variable maxState = 0
 	if(NVAR_Exists(cHMM) && cHMM == 1 && NVAR_Exists(Dstate))
 		maxState = Dstate
 	endif
-	
-	Variable cutoffPt = NVAR_Exists(AreaRangeMSD) ? AreaRangeMSD : 10
-	Variable fr = NVAR_Exists(framerate) ? framerate : 0.033
-	
-	// 
-	NVAR/Z InitialD0 = root:InitialD0
-	NVAR/Z InitialL = root:InitialL
-	Variable D0init = NVAR_Exists(InitialD0) ? InitialD0 : 0.05
-	Variable Linit = NVAR_Exists(InitialL) ? InitialL : 0.1
+
+	Variable cutoffPt = AreaRangeMSD
+	Variable fr = framerate
+
+	//
+	NVAR InitialD0 = root:InitialD0
+	NVAR InitialL = root:InitialL
+	Variable D0init = InitialD0
+	Variable Linit = InitialL
 	
 	String resultsPath = "root:" + smpl + ":Results:"
 	
@@ -1032,8 +1040,8 @@ Function CompareD(stateNum)
 	ModifyGraph tick(top)=3
 	
 	// 
-	NVAR/Z DstateVar = root:Dstate
-	Variable totalStates = NVAR_Exists(DstateVar) ? DstateVar : 4
+	NVAR DstateVar = root:Dstate
+	Variable totalStates = DstateVar
 	String stateName = GetDstateName(stateNum, totalStates)
 	
 	// 
@@ -1201,8 +1209,8 @@ Function CompareL(stateNum)
 	ModifyGraph tick(top)=3
 	
 	// 
-	NVAR/Z DstateVar = root:Dstate
-	Variable totalStates = NVAR_Exists(DstateVar) ? DstateVar : 4
+	NVAR DstateVar = root:Dstate
+	Variable totalStates = DstateVar
 	String stateName = GetDstateName(stateNum, totalStates)
 	
 	// 
@@ -1275,8 +1283,8 @@ Function CompareDstate(stateNum)
 		ModifyGraph tkLblRot(bottom)=90
 		
 		// 
-		NVAR/Z DstateVar = root:Dstate
-		Variable totalStates = NVAR_Exists(DstateVar) ? DstateVar : 4
+		NVAR DstateVar = root:Dstate
+		Variable totalStates = DstateVar
 		String stateName = GetDstateName(stateNum, totalStates)
 		Label left "Population [%] (" + stateName + ")"
 		SetAxis left 0, *
@@ -1416,6 +1424,13 @@ Function CompareAllCore(doMSD, doStepSize, doIntensity, doLP, doDensity, doMolDe
 	if(doStateTransition)
 		Print "--- Compare State Transition Kinetics ---"
 		CompareStateTransCore(basePath, waveSuffix)
+	endif
+	
+	// Pixel Value (if Image enabled)
+	NVAR/Z cImageFlag = root:cImage
+	if(NVAR_Exists(cImageFlag) && cImageFlag == 1)
+		Print "--- Compare Pixel Value ---"
+		ComparePVMeanCore(basePath, waveSuffix)
 	endif
 End
 
@@ -1818,8 +1833,8 @@ Function AverageStepHist(stateNum, deltaTval)
 	SetAxis bottom 0, *
 	
 	// 
-	NVAR/Z DstateVar = root:Dstate
-	Variable totalStates = NVAR_Exists(DstateVar) ? DstateVar : 4
+	NVAR DstateVar = root:Dstate
+	Variable totalStates = DstateVar
 	String stateName = GetDstateName(stateNum, totalStates)
 	DoWindow/T $winName, "Average Step size Histogram (" + stateName + ", Δt=" + num2str(deltaTval) + ")"
 	
@@ -2041,8 +2056,8 @@ Function AverageIntHist(stateNum)
 	SetAxis bottom 0, *
 	
 	// 
-	NVAR/Z DstateVar = root:Dstate
-	Variable totalStates = NVAR_Exists(DstateVar) ? DstateVar : 4
+	NVAR DstateVar = root:Dstate
+	Variable totalStates = DstateVar
 	String stateName = GetDstateName(stateNum, totalStates)
 	DoWindow/T $winName, "Average Intensity Histogram (" + stateName + ")"
 	
@@ -2222,15 +2237,15 @@ Function AverageLPHist(stateNum)
 		traceName = smpl + "_LPHist_" + stateStr
 		traceSemName = smpl + "_LPHistSem_" + stateStr
 		traceXName = smpl + "_LPHistX_" + stateStr
-		
+
 		Duplicate/O hist_avg, $traceName
 		Wave histW = $traceName
-		
+
 		if(WaveExists(hist_x))
 			Duplicate/O hist_x, $traceXName
 		else
-			NVAR/Z LPhistBin = root:LPhistBin
-			Variable binSize = NVAR_Exists(LPhistBin) ? LPhistBin * 0.001 : 0.005
+			NVAR LPhistBin = root:LPhistBin
+			Variable binSize = LPhistBin * 0.001
 			Make/O/N=(numpnts(histW)) $traceXName
 			Wave xW = $traceXName
 			xW = (p + 0.5) * binSize
@@ -2269,8 +2284,8 @@ Function AverageLPHist(stateNum)
 	SetAxis bottom 0, *
 	
 	// 
-	NVAR/Z DstateVar = root:Dstate
-	Variable totalStates = NVAR_Exists(DstateVar) ? DstateVar : 4
+	NVAR DstateVar = root:Dstate
+	Variable totalStates = DstateVar
 	String stateName = GetDstateName(stateNum, totalStates)
 	DoWindow/T $winName, "Average LP Histogram (" + stateName + ")"
 	
@@ -2329,15 +2344,15 @@ Function AverageLPHistPerSample(smpl)
 		traceName = smpl + "_" + stateStr + "_lpHist"
 		traceXName = smpl + "_" + stateStr + "_lpHistX"
 		traceSemName = smpl + "_" + stateStr + "_lpHistSem"
-		
+
 		Duplicate/O hist_avg, $traceName
 		Wave histW = $traceName
-		
+
 		if(WaveExists(hist_x))
 			Duplicate/O hist_x, $traceXName
 		else
-			NVAR/Z LPhistBin = root:LPhistBin
-			Variable binSize = NVAR_Exists(LPhistBin) ? LPhistBin * 0.001 : 0.005
+			NVAR LPhistBin = root:LPhistBin
+			Variable binSize = LPhistBin * 0.001
 			Make/O/N=(numpnts(histW)) $traceXName
 			Wave xW = $traceXName
 			xW = (p + 0.5) * binSize
@@ -2476,8 +2491,8 @@ Function AverageOntimeCore(basePath, waveSuffix)
 		if(WaveExists(time_avg))
 			Duplicate/O time_avg, $traceXName
 		else
-			NVAR/Z framerate = root:framerate
-			Variable fr = NVAR_Exists(framerate) ? framerate : 0.033
+			NVAR framerate = root:framerate
+			Variable fr = framerate
 			Make/O/N=(numpnts(durW)) $traceXName
 			Wave xW = $traceXName
 			xW = (p + 1) * fr
@@ -2748,8 +2763,8 @@ Function AverageOnrateCore(stateNum, basePath, waveSuffix)
 		if(WaveExists(time_avg))
 			Duplicate/O time_avg, $traceXName
 		else
-			NVAR/Z framerate = root:framerate
-			Variable fr = NVAR_Exists(framerate) ? framerate : 0.033
+			NVAR framerate = root:framerate
+			Variable fr = framerate
 			Make/O/N=(numpnts(onW)) $traceXName
 			Wave xW = $traceXName
 			xW = (p + 1) * fr
@@ -2836,8 +2851,8 @@ Function AverageOnrateCore(stateNum, basePath, waveSuffix)
 	SetAxis left 0, *
 	
 	// 
-	NVAR/Z DstateVar = root:Dstate
-	Variable totalStates = NVAR_Exists(DstateVar) ? DstateVar : 4
+	NVAR DstateVar = root:Dstate
+	Variable totalStates = DstateVar
 	String stateName = GetDstateName(stateNum, totalStates)
 	String titleSuffix = SelectString(strlen(waveSuffix) > 0, "", " [" + segLabel + "]")
 	DoWindow/T $winName, "Average Cumulative On-events (" + stateName + ")" + titleSuffix
@@ -2904,8 +2919,8 @@ Function AverageOnratePerSample(smpl)
 		if(WaveExists(time_avg))
 			Duplicate/O time_avg, $traceXName
 		else
-			NVAR/Z framerate = root:framerate
-			Variable fr = NVAR_Exists(framerate) ? framerate : 0.033
+			NVAR framerate = root:framerate
+			Variable fr = framerate
 			Make/O/N=(numpnts(onW)) $traceXName
 			Wave xW = $traceXName
 			xW = (p + 1) * fr
@@ -3018,7 +3033,7 @@ Function AverageMolDensHist(stateNum)
 		Duplicate/O hist_avg, $traceName
 		Wave histW = $traceName
 		
-		// X1, 2, 3, ...
+		// X: 1, 2, 3, ... (oligomer size = monomer, dimer, trimer, ...)
 		Make/O/N=(numpnts(histW)) $traceXName
 		Wave xW = $traceXName
 		xW = p + 1
@@ -3057,8 +3072,8 @@ Function AverageMolDensHist(stateNum)
 	SetAxis left 0, *
 	
 	// 
-	NVAR/Z DstateVar = root:Dstate
-	Variable totalStates = NVAR_Exists(DstateVar) ? DstateVar : 4
+	NVAR DstateVar = root:Dstate
+	Variable totalStates = DstateVar
 	String stateName = GetDstateName(stateNum, totalStates)
 	DoWindow/T $winName, "Average Molecular Density Distribution (" + stateName + ")"
 	
@@ -3091,16 +3106,16 @@ Function AverageMolDensFraction()
 	String traceName, traceSemName, traceXName
 	String traceList = "", labelList = ""
 	
-	NVAR/Z Dstate = root:Dstate
-	Variable maxState = NVAR_Exists(Dstate) ? Dstate : 4
+	NVAR Dstate = root:Dstate
+	Variable maxState = Dstate
 	
 	SetDataFolder root:Comparison
 	
-	// X
-	Make/O/T/N=(maxState + 1) MolDens_StateLabels
+	// X labels (skip S0=100%, start from S1)
+	Make/O/T/N=(maxState) MolDens_StateLabels
 	Variable s
-	for(s = 0; s <= maxState; s += 1)
-		MolDens_StateLabels[s] = "S" + num2str(s)
+	for(s = 1; s <= maxState; s += 1)
+		MolDens_StateLabels[s-1] = GetDstateName(s, maxState)
 	endfor
 	
 	for(i = 0; i < numSamples; i += 1)
@@ -3118,13 +3133,17 @@ Function AverageMolDensFraction()
 		traceName = smpl + "_StateFrac"
 		traceSemName = smpl + "_StateFracSem"
 		
-		Duplicate/O frac_avg, $traceName
+		// Extract S1-Sn only (skip S0)
+		Make/O/N=(maxState) $traceName = NaN
 		Wave fracW = $traceName
+		fracW = frac_avg[p+1]
 		
 		if(WaveExists(frac_sem))
-			Duplicate/O frac_sem, $traceSemName
+			Make/O/N=(maxState) $traceSemName = 0
+			Wave semW = $traceSemName
+			semW = frac_sem[p+1]
 		else
-			Make/O/N=(numpnts(fracW)) $traceSemName = 0
+			Make/O/N=(maxState) $traceSemName = 0
 		endif
 		Wave semW = $traceSemName
 		
@@ -3154,8 +3173,8 @@ Function AverageMolDensFraction()
 	ModifyGraph tick(bottom)=3
 	ModifyGraph catGap(bottom)=0.3, barGap(bottom)=0.1
 	
-	// State×
-	Variable totalBarsF = (maxState + 1) * numSamples
+	// State× (S1-Sn only)
+	Variable totalBarsF = maxState * numSamples
 	SetBarGraphSizeByItems(totalBarsF)
 	
 	Label left "State Fraction [%]"
@@ -3266,8 +3285,8 @@ End
 Function AverageParticleVsMolDensByState(smpl)
 	String smpl
 	
-	NVAR/Z Dstate = root:Dstate
-	Variable maxState = NVAR_Exists(Dstate) ? Dstate : 4
+	NVAR Dstate = root:Dstate
+	Variable maxState = Dstate
 	
 	String resultsPath = "root:" + smpl + ":Results:"
 	
@@ -3390,9 +3409,9 @@ Function AverageHeatmap()
 	endif
 	
 	NVAR/Z HeatmapMin = root:HeatmapMin
-	NVAR/Z HeatmapMax = root:HeatmapMax
+	NVAR HeatmapMax = root:HeatmapMax
 	Variable hMin = NVAR_Exists(HeatmapMin) ? HeatmapMin : 0
-	Variable hMax = NVAR_Exists(HeatmapMax) ? HeatmapMax : 0.1
+	Variable hMax = HeatmapMax
 	
 	// SVAR
 	SVAR/Z Color0 = root:Color0
@@ -3486,8 +3505,8 @@ Function AverageStateTransDiagram()
 		return -1
 	endif
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 4
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	Variable i, j, s
 	String smpl, resultsPath
@@ -4124,8 +4143,8 @@ Function DrawAverageStateTransDiagram(smpl, D_avg, D_sem, L_avg, L_sem, P_avg, P
 	endif
 	
 	// 14Arial
-	NVAR/Z framerate = root:framerate
-	Variable fr = NVAR_Exists(framerate) ? framerate : 0.033
+	NVAR framerate = root:framerate
+	Variable fr = framerate
 	sprintf labelStr, "\\F'Arial'\\Z14Average State Transition: %s (%d states)\r\\Z12framerate = %.3f s", smpl, Dstate, fr
 	TextBox/C/N=title/F=0/B=1/A=LT/X=0/Y=0 labelStr
 	
@@ -4832,8 +4851,8 @@ Function CompareHMMP()
 	String savedDF = GetDataFolder(1)
 	String basePath = "root:"
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	ResetStatisticsSummaryTable()
 	Print "=== Compare HMMP (D-state Population) ==="
@@ -4949,8 +4968,8 @@ Function CompareIntensity()
 	String savedDF = GetDataFolder(1)
 	String basePath = "root:"
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	ResetStatisticsSummaryTable()
 	Print "=== Compare Intensity (Mean Oligomer Size) ==="
@@ -5066,8 +5085,8 @@ Function CompareLP()
 	String savedDF = GetDataFolder(1)
 	String basePath = "root:"
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	ResetStatisticsSummaryTable()
 	Print "=== Compare LP (Localization Precision) ==="
@@ -5182,8 +5201,8 @@ Function CompareDensity()
 	String savedDF = GetDataFolder(1)
 	String basePath = "root:"
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	ResetStatisticsSummaryTable()
 	Print "=== Compare Particle Density ==="
@@ -5326,8 +5345,8 @@ Function CompareMolDensity()
 	String savedDF = GetDataFolder(1)
 	String basePath = "root:"
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	ResetStatisticsSummaryTable()
 	Print "=== Compare Molecular Density ==="
@@ -5440,8 +5459,8 @@ Function CompareOnTime()
 	String basePath = "root:"
 	
 	// ExpMax_offOn-time
-	NVAR/Z gExpMax = root:ExpMax_off
-	Variable expMax = NVAR_Exists(gExpMax) ? gExpMax : 2
+	NVAR gExpMax = root:ExpMax_off
+	Variable expMax = gExpMax
 	
 	ResetStatisticsSummaryTable()
 	Print "=== Compare On-Time (tau & kinetic state fractions) ==="
@@ -5634,8 +5653,8 @@ Function CompareOnRate()
 	String savedDF = GetDataFolder(1)
 	String basePath = "root:"
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	ResetStatisticsSummaryTable()
 	Print "=== Compare On-rate ==="
@@ -5881,8 +5900,8 @@ Function CompareStateTransKinetics()
 		return -1
 	endif
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	NVAR/Z cKinOutputTau = root:cKinOutputTau
 	Variable outputTau = NVAR_Exists(cKinOutputTau) ? cKinOutputTau : 1
@@ -6716,8 +6735,8 @@ Function CompareDWithPath(stateNum, basePath, waveSuffix)
 		ModifyGraph noLabel(top)=2, axThick(top)=0, tick(top)=3
 	endif
 	
-	NVAR/Z DstateVar = root:Dstate
-	Variable totalStates = NVAR_Exists(DstateVar) ? DstateVar : 4
+	NVAR DstateVar = root:Dstate
+	Variable totalStates = DstateVar
 	String stateName = GetDstateName(stateNum, totalStates)
 	
 	ModifyGraph tick=2, mirror=0, fStyle=1, fSize=14, font="Arial"
@@ -6884,8 +6903,8 @@ Function CompareLWithPath(stateNum, basePath, waveSuffix)
 		ModifyGraph noLabel(top)=2, axThick(top)=0, tick(top)=3
 	endif
 	
-	NVAR/Z DstateVar = root:Dstate
-	Variable totalStates = NVAR_Exists(DstateVar) ? DstateVar : 4
+	NVAR DstateVar = root:Dstate
+	Variable totalStates = DstateVar
 	String stateName = GetDstateName(stateNum, totalStates)
 	
 	ModifyGraph tick=2, mirror=0, fStyle=1, fSize=14, font="Arial"
@@ -6917,8 +6936,8 @@ Function CompareMSD_MeanSEM_D_WithPath(basePath, waveSuffix)
 	String basePathColon = basePath + ":"
 	String segLabel = GetSegmentLabel(waveSuffix)
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	String sampleList = GetSampleListFromBase(basePathColon)
 	Variable numSamples = ItemsInList(sampleList)
@@ -7015,8 +7034,8 @@ Function CompareMSD_MeanSEM_L_WithPath(basePath, waveSuffix)
 	String basePathColon = basePath + ":"
 	String segLabel = GetSegmentLabel(waveSuffix)
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	String sampleList = GetSampleListFromBase(basePathColon)
 	Variable numSamples = ItemsInList(sampleList)
@@ -7112,8 +7131,8 @@ Function CompareHMMPWithPath(basePath, waveSuffix)
 	String savedDF = GetDataFolder(1)
 	String basePathColon = basePath + ":"
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	Print "=== Compare HMMP (D-state Population) [" + GetSegmentLabel(waveSuffix) + "] ==="
 	
@@ -7238,8 +7257,8 @@ Function CompareIntensityWithPath(basePath, waveSuffix)
 	String savedDF = GetDataFolder(1)
 	String basePathColon = basePath + ":"
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	String segLabel = GetSegmentLabel(waveSuffix)
 	Print "=== Compare Intensity (Mean Oligomer Size) [" + segLabel + "] ==="
@@ -7366,8 +7385,8 @@ Function CompareLPWithPath(basePath, waveSuffix)
 	String savedDF = GetDataFolder(1)
 	String basePathColon = basePath + ":"
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	String segLabel = GetSegmentLabel(waveSuffix)
 	Print "=== Compare LP (Localization Precision) [" + segLabel + "] ==="
@@ -7489,8 +7508,8 @@ Function CompareDensityWithPath(basePath, waveSuffix)
 	String savedDF = GetDataFolder(1)
 	String basePathColon = basePath + ":"
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	String segLabel = GetSegmentLabel(waveSuffix)
 	Print "=== Compare Particle Density [" + segLabel + "] ==="
@@ -7543,8 +7562,8 @@ Function CompareMolDensityWithPath(basePath, waveSuffix)
 	String savedDF = GetDataFolder(1)
 	String basePathColon = basePath + ":"
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	String segLabel = GetSegmentLabel(waveSuffix)
 	Print "=== Compare Molecular Density [" + segLabel + "] ==="
@@ -7612,8 +7631,8 @@ Function CompareOnrateWithPath(basePath, waveSuffix)
 	String basePathColon = basePath + ":"
 	String segLabel = GetSegmentLabel(waveSuffix)
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	Print "=== Compare On-rate [" + segLabel + "] ==="
 	
@@ -7845,17 +7864,17 @@ Function AverageMSDWithPath(stateNum, basePath, waveSuffix)
 	String MSD_sem_name = "MSD_avg_" + stateStr + "_m_sem"
 	String MSD_time_name = "MSD_time_" + stateStr + "_m_avg"
 	
-	NVAR/Z AreaRangeMSD = root:AreaRangeMSD
-	Variable cutoffPt = NVAR_Exists(AreaRangeMSD) ? AreaRangeMSD : 10
-	
+	NVAR AreaRangeMSD = root:AreaRangeMSD
+	Variable cutoffPt = AreaRangeMSD
+
 	String winName = "AverageMSD_" + stateStr + waveSuffix
 	DoWindow/K $winName
 	Display/K=1/N=$winName
-	
-	NVAR/Z InitialD0 = root:InitialD0
-	NVAR/Z InitialL = root:InitialL
-	Variable D0init = NVAR_Exists(InitialD0) ? InitialD0 : 0.05
-	Variable Linit = NVAR_Exists(InitialL) ? InitialL : 0.1
+
+	NVAR InitialD0 = root:InitialD0
+	NVAR InitialL = root:InitialL
+	Variable D0init = InitialD0
+	Variable Linit = InitialL
 	
 	Variable i, f, r, g, b
 	Variable RowSize
@@ -7964,8 +7983,8 @@ Function AverageMSDWithPath(stateNum, basePath, waveSuffix)
 	SetAxis left 0, *
 	
 	// Seg
-	NVAR/Z DstateVar = root:Dstate
-	Variable totalStates = NVAR_Exists(DstateVar) ? DstateVar : 4
+	NVAR DstateVar = root:Dstate
+	Variable totalStates = DstateVar
 	String stateName = GetDstateName(stateNum, totalStates)
 	DoWindow/T $winName, "Average MSD-Δt (" + stateName + ") [" + segLabel + "]"
 	
@@ -8080,8 +8099,8 @@ Function AverageStepHistWithPath(stateNum, deltaTval, basePath, waveSuffix)
 	Label bottom "\\F'Arial'\\Z12Step size [µm]"
 	SetAxis left 0, *
 	
-	NVAR/Z DstateVar = root:Dstate
-	Variable totalStates = NVAR_Exists(DstateVar) ? DstateVar : 4
+	NVAR DstateVar = root:Dstate
+	Variable totalStates = DstateVar
 	String stateName = GetDstateName(stateNum, totalStates)
 	DoWindow/T $winName, "Average Step size Histogram (" + stateName + ", Δt=" + num2str(deltaTval) + ") [" + segLabel + "]"
 	
@@ -8185,8 +8204,8 @@ Function AverageIntHistWithPath(stateNum, basePath, waveSuffix)
 	SetAxis left 0, *
 	
 	// 
-	NVAR/Z DstateVar = root:Dstate
-	Variable totalStates = NVAR_Exists(DstateVar) ? DstateVar : 4
+	NVAR DstateVar = root:Dstate
+	Variable totalStates = DstateVar
 	String stateName = GetDstateName(stateNum, totalStates)
 	DoWindow/T $winName, "Average Intensity Histogram (" + stateName + ") [" + segLabel + "]"
 	
@@ -8284,8 +8303,8 @@ Function AverageLPHistWithPath(stateNum, basePath, waveSuffix)
 	Label bottom "\\F'Arial'\\Z12Localization Precision [nm]"
 	SetAxis left 0, *
 	
-	NVAR/Z DstateVar = root:Dstate
-	Variable totalStates = NVAR_Exists(DstateVar) ? DstateVar : 4
+	NVAR DstateVar = root:Dstate
+	Variable totalStates = DstateVar
 	String stateName = GetDstateName(stateNum, totalStates)
 	DoWindow/T $winName, "Average LP Histogram (" + stateName + ") [" + segLabel + "]"
 	
@@ -8372,7 +8391,7 @@ Function AverageMolDensHistWithPath(stateNum, basePath, waveSuffix)
 		Duplicate/O hist_avg, $traceName
 		Wave histW = $traceName
 		
-		// X1, 2, 3, ...
+		// X: 1, 2, 3, ... (oligomer size = monomer, dimer, trimer, ...)
 		Make/O/N=(numpnts(histW)) $traceXName
 		Wave xW = $traceXName
 		xW = p + 1
@@ -8412,8 +8431,8 @@ Function AverageMolDensHistWithPath(stateNum, basePath, waveSuffix)
 	Label bottom "Oligomer Size"
 	SetAxis left 0, *
 	
-	NVAR/Z DstateVar = root:Dstate
-	Variable totalStates = NVAR_Exists(DstateVar) ? DstateVar : 4
+	NVAR DstateVar = root:Dstate
+	Variable totalStates = DstateVar
 	String stateName = GetDstateName(stateNum, totalStates)
 	DoWindow/T $winName, "Average Molecular Density Distribution (" + stateName + ") [" + segLabel + "]"
 	
@@ -8456,17 +8475,17 @@ Function AverageMolDensFractionWithPath(basePath, waveSuffix)
 	String traceName, traceSemName
 	String traceList = "", labelList = ""
 	
-	NVAR/Z Dstate = root:Dstate
-	Variable maxState = NVAR_Exists(Dstate) ? Dstate : 4
+	NVAR Dstate = root:Dstate
+	Variable maxState = Dstate
 	
 	SetDataFolder root:Comparison
 	
-	// X
+	// X labels (skip S0=100%, start from S1)
 	String labelsName = "MolDens_StateLabels" + waveSuffix
-	Make/O/T/N=(maxState + 1) $labelsName
+	Make/O/T/N=(maxState) $labelsName
 	Wave/T StateLabels = $labelsName
-	for(s = 0; s <= maxState; s += 1)
-		StateLabels[s] = "S" + num2str(s)
+	for(s = 1; s <= maxState; s += 1)
+		StateLabels[s-1] = GetDstateName(s, maxState)
 	endfor
 	
 	for(i = 0; i < numSamples; i += 1)
@@ -8484,13 +8503,17 @@ Function AverageMolDensFractionWithPath(basePath, waveSuffix)
 		traceName = smpl + "_StateFrac" + waveSuffix
 		traceSemName = smpl + "_StateFracSem" + waveSuffix
 		
-		Duplicate/O frac_avg, $traceName
+		// Extract S1-Sn only (skip S0)
+		Make/O/N=(maxState) $traceName = NaN
 		Wave fracW = $traceName
+		fracW = frac_avg[p+1]
 		
 		if(WaveExists(frac_sem))
-			Duplicate/O frac_sem, $traceSemName
+			Make/O/N=(maxState) $traceSemName = 0
+			Wave semW = $traceSemName
+			semW = frac_sem[p+1]
 		else
-			Make/O/N=(numpnts(fracW)) $traceSemName = 0
+			Make/O/N=(maxState) $traceSemName = 0
 		endif
 		Wave semW = $traceSemName
 		
@@ -8522,8 +8545,8 @@ Function AverageMolDensFractionWithPath(basePath, waveSuffix)
 	ModifyGraph tick(bottom)=3
 	ModifyGraph catGap(bottom)=0.3, barGap(bottom)=0.1
 	
-	// State×
-	Variable totalBarsSeg = (maxState + 1) * numSamples
+	// State× (S1-Sn only)
+	Variable totalBarsSeg = maxState * numSamples
 	SetBarGraphSizeByItems(totalBarsSeg)
 	
 	Label left "State Fraction [%]"
@@ -8533,5 +8556,34 @@ Function AverageMolDensFractionWithPath(basePath, waveSuffix)
 	
 	SetDataFolder root:
 	Print "  AverageMolDensFraction [" + segLabel + "] completed"
+	return 0
+End
+
+// =============================================================================
+// Compare Pixel Value Mean per state
+// Uses CreateComparisonSummaryPlot (same as ParticleDensity)
+// =============================================================================
+Function ComparePVMeanCore(basePath, waveSuffix)
+	String basePath, waveSuffix
+	
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
+	
+	Variable stt
+	String stateName, winName, outputPrefix, yLabel, graphTitle
+	
+	for(stt = 0; stt <= Dstate; stt += 1)
+		stateName = GetDstateName(stt, Dstate)
+		outputPrefix = "PVMean_S" + num2str(stt)
+		winName = "Compare_PVMean_S" + num2str(stt)
+		yLabel = "\\F'Arial'\\Z14Pixel Value (S" + num2str(stt) + ": " + stateName + ")"
+		graphTitle = "Compare Pixel Value Mean (S" + num2str(stt) + ": " + stateName + ")"
+		
+		CreateComparisonSummaryPlot(basePath, "PV_mean_m", stt, outputPrefix, winName, yLabel, graphTitle, 1, stt)
+		
+		RunAutoStatisticalTest(winName)
+		Print "  Compare PV Mean S" + num2str(stt) + " completed"
+	endfor
+	
 	return 0
 End

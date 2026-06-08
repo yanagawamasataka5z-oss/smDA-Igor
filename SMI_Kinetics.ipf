@@ -14,11 +14,12 @@
 // Duration_Gcount - On-time
 // AIC
 // -----------------------------------------------------------------------------
-Function Duration_Gcount(SampleName, [basePath, useMinFrame, waveSuffix])
+Function Duration_Gcount(SampleName, [basePath, useMinFrame, waveSuffix, overrideTau1, overrideTauScale, overrideA1, overrideAScale])
 	String SampleName
 	String basePath      // :  "root"
 	Variable useMinFrame // : MinFrame root:MinFrame
 	String waveSuffix    // : wave"_C1E", "_C2E"
+	Variable overrideTau1, overrideTauScale, overrideA1, overrideAScale
 	
 	// 
 	EnsureGlobalParameters()
@@ -36,9 +37,12 @@ Function Duration_Gcount(SampleName, [basePath, useMinFrame, waveSuffix])
 	NVAR/Z cSuppressOutput = root:cSuppressOutput
 	Variable suppressOutput = NVAR_Exists(cSuppressOutput) ? cSuppressOutput : 0
 	
-	// EnsureGlobalParameters
-	Variable useA1 = InitialA1_off
-	Variable useAScale = AScale_off
+	// Apply overrides if provided (for Colocalization — avoids global modification)
+	Variable useTau1 = ParamIsDefault(overrideTau1) ? InitialTau1_off : overrideTau1
+	Variable useTauScale = ParamIsDefault(overrideTauScale) ? TauScale_off : overrideTauScale
+	Variable useA1 = ParamIsDefault(overrideA1) ? InitialA1_off : overrideA1
+	Variable useAScale = ParamIsDefault(overrideAScale) ? AScale_off : overrideAScale
+	
 	
 	// 
 	if(ParamIsDefault(basePath))
@@ -59,7 +63,7 @@ Function Duration_Gcount(SampleName, [basePath, useMinFrame, waveSuffix])
 	if(!suppressOutput)
 		Print "=== Duration (On-time) Analysis ==="
 		Printf "BasePath: %s, FrameNum: %d, framerate: %.4f s, MinFrame: %d, suffix=%s\r", basePath, FrameNum, framerate, useMinFrame, waveSuffix
-		Printf "Exp range: %d-%d, Tau1: %.4f s, Scale: %.1f\r", ExpMin_off, ExpMax_off, InitialTau1_off, TauScale_off
+		Printf "Exp range: %d-%d, Tau1: %.4f s, Scale: %.1f\r", ExpMin_off, ExpMax_off, useTau1, useTauScale
 	endif
 	
 	// 
@@ -243,7 +247,7 @@ Function Duration_Gcount(SampleName, [basePath, useMinFrame, waveSuffix])
 			Variable n
 			for(n = 0; n < numstate; n += 1)
 				W_coef_temp[n * 2] = useA1 * (useAScale ^ n)  // A [%]
-				W_coef_temp[n * 2 + 1] = InitialTau1_off * (TauScale_off ^ n)  // Tau [s]
+				W_coef_temp[n * 2 + 1] = useTau1 * (useTauScale ^ n)  // Tau [s]
 			endfor
 			
 			// 
@@ -320,7 +324,7 @@ Function Duration_Gcount(SampleName, [basePath, useMinFrame, waveSuffix])
 			
 			for(n = 0; n < bestState; n += 1)
 				W_coef[n * 2] = useA1 * (useAScale ^ n)
-				W_coef[n * 2 + 1] = InitialTau1_off * (TauScale_off ^ n)
+				W_coef[n * 2 + 1] = useTau1 * (useTauScale ^ n)
 			endfor
 			
 			Make/O/T/N=(bestState * 2) $(folderPath + "T_Constraints")
@@ -1651,7 +1655,11 @@ End
 // -----------------------------------------------------------------------------
 Function DrawStateTransitionDiagramForCell(SampleName, CellName)
 	String SampleName, CellName
-	
+
+	// [nofallback] P_values NaN handling: when P_values[i] is NaN,
+	// keep NaN instead of substituting 100/Dstate. Downstream Igor
+	// drawing commands gracefully skip NaN-sized markers.
+
 	NVAR Dstate = root:Dstate
 	NVAR framerate = root:framerate
 	NVAR/Z LThreshold = root:LThreshold
@@ -1785,14 +1793,16 @@ Function DrawStateTransitionDiagramForCell(SampleName, CellName)
 	Variable totalP = 0
 	for(i = 0; i < Dstate; i += 1)
 		if(numtype(P_values[i]) != 0 || P_values[i] < 0)
-			P_values[i] = 100 / Dstate  // 
+			P_values[i] = NaN
+			Printf "WARNING: Population data NaN/invalid for state %d. Diagram will show empty.\r", i
 		endif
 		totalP += P_values[i]
 	endfor
 	// 0
 	if(totalP <= 0)
 		for(i = 0; i < Dstate; i += 1)
-			P_values[i] = 100 / Dstate
+			P_values[i] = NaN
+			Printf "WARNING: Population data NaN/invalid for state %d. Diagram will show empty.\r", i
 		endfor
 	endif
 	
@@ -1901,7 +1911,8 @@ Function DrawStateTransitionDiagramForCell(SampleName, CellName)
 	for(i = 0; i < Dstate; i += 1)
 		Variable pVal = P_values[i]
 		if(numtype(pVal) != 0)
-			pVal = 100 / Dstate  // 
+			pVal = NaN
+			Printf "WARNING: Population data NaN/invalid for state %d. Diagram will show empty.\r", i
 		endif
 		markerSize = minMarkerSize + (maxMarkerSize - minMarkerSize) * (pVal / maxPop)
 		avgMarkerSize += markerSize
@@ -2008,10 +2019,10 @@ Function DrawStateTransitionDiagramForCell(SampleName, CellName)
 			AppendToGraph stateY vs stateX
 			traceName = stateYName
 			
-			// P_values
+			// P_values (NaN → NaN: no silent fallback)
 			Variable pValForSize = P_values[i]
 			if(numtype(pValForSize) != 0)
-				pValForSize = 100 / Dstate
+				pValForSize = NaN
 			endif
 			markerSize = minMarkerSize + (maxMarkerSize - minMarkerSize) * (pValForSize / maxPop)
 			
@@ -2035,7 +2046,7 @@ Function DrawStateTransitionDiagramForCell(SampleName, CellName)
 				// 
 				Variable pValL = P_values[i]
 				if(numtype(pValL) != 0)
-					pValL = 100 / Dstate
+					pValL = NaN
 				endif
 				Variable stateMarkerSize = minMarkerSize + (maxMarkerSize - minMarkerSize) * (pValL / maxPop)
 				
@@ -2084,7 +2095,7 @@ Function DrawStateTransitionDiagramForCell(SampleName, CellName)
 		stateName = StateNames[nameIdx][i]
 		Variable pValForLabel = P_values[i]
 		if(numtype(pValForLabel) != 0)
-			pValForLabel = 100 / Dstate
+			pValForLabel = NaN
 		endif
 		markerSize = minMarkerSize + (maxMarkerSize - minMarkerSize) * (pValForLabel / maxPop)
 		
@@ -2384,36 +2395,21 @@ Function CumOnrateAnalysis(SampleName, [basePath])
 	String FolderName
 	
 	NVAR framerate = root:framerate
-	NVAR/Z gFrameNum = root:FrameNum
-	NVAR/Z gMinFrame = root:MinFrame
+	NVAR gFrameNum = root:FrameNum
+	NVAR gMinFrame = root:MinFrame
 	NVAR/Z gFixArea = root:cFixArea
-	NVAR/Z gOnArea = root:OnArea
+	NVAR gOnArea = root:OnArea
 	NVAR/Z gInitialVon = root:InitialVon
-	NVAR/Z gInitialTauon = root:InitialTauon
-	
-	// 
-	Variable localFrameNum = 1000
-	Variable localMinFrame = 5
-	Variable localOnArea = 100
-	Variable localInitVon = 1
-	Variable localInitTauon = 1
+	NVAR gInitialTauon = root:InitialTauon
+
+	//
+	Variable localFrameNum = gFrameNum
+	Variable localMinFrame = gMinFrame
+	Variable localOnArea = gOnArea
+	Variable localInitVon = NVAR_Exists(gInitialVon) ? gInitialVon : 1
+	Variable localInitTauon = gInitialTauon
 	Variable localFixArea = 0
-	
-	if(NVAR_Exists(gFrameNum))
-		localFrameNum = gFrameNum
-	endif
-	if(NVAR_Exists(gMinFrame))
-		localMinFrame = gMinFrame
-	endif
-	if(NVAR_Exists(gOnArea))
-		localOnArea = gOnArea
-	endif
-	if(NVAR_Exists(gInitialVon))
-		localInitVon = gInitialVon
-	endif
-	if(NVAR_Exists(gInitialTauon))
-		localInitTauon = gInitialTauon
-	endif
+
 	if(NVAR_Exists(gFixArea))
 		localFixArea = gFixArea
 	endif
@@ -2521,43 +2517,25 @@ Function OnrateAnalysisWithOption(SampleName, [basePath, waveSuffix])
 	String FolderName, folderPath
 	
 	NVAR framerate = root:framerate
-	NVAR/Z gFrameNum = root:FrameNum
-	NVAR/Z gMinFrame = root:MinFrame
-	NVAR/Z gOnArea = root:OnArea
-	NVAR/Z gInitialTauon = root:InitialTauon
+	NVAR gFrameNum = root:FrameNum
+	NVAR gMinFrame = root:MinFrame
+	NVAR gOnArea = root:OnArea
+	NVAR gInitialTauon = root:InitialTauon
 	NVAR/Z gInitialVon = root:InitialVon
 	NVAR/Z cUseDensity = root:cUseDensityForOnrate
 	NVAR/Z cHMM = root:cHMM
-	NVAR/Z gDstate = root:Dstate
-	
-	// 
-	Variable localFrameNum = 1000
-	Variable localMinFrame = 5
-	Variable localOnArea = 1108  // 512x512 pix default
-	Variable localInitTauon = 5  // 5
-	Variable localInitVon = 1
-	Variable useDensity = 1  // : Density
+	NVAR gDstate = root:Dstate
+
+	//
+	Variable localFrameNum = gFrameNum
+	Variable localMinFrame = gMinFrame
+	Variable localOnArea = gOnArea
+	Variable localInitTauon = gInitialTauon
+	Variable localInitVon = NVAR_Exists(gInitialVon) ? gInitialVon : 1
+	Variable useDensity = NVAR_Exists(cUseDensity) ? cUseDensity : 1
 	Variable maxState = 0
-	
-	if(NVAR_Exists(gFrameNum))
-		localFrameNum = gFrameNum
-	endif
-	if(NVAR_Exists(gMinFrame))
-		localMinFrame = gMinFrame
-	endif
-	if(NVAR_Exists(gOnArea))
-		localOnArea = gOnArea
-	endif
-	if(NVAR_Exists(gInitialTauon))
-		localInitTauon = gInitialTauon
-	endif
-	if(NVAR_Exists(gInitialVon))
-		localInitVon = gInitialVon
-	endif
-	if(NVAR_Exists(cUseDensity))
-		useDensity = cUseDensity
-	endif
-	if(NVAR_Exists(cHMM) && cHMM == 1 && NVAR_Exists(gDstate))
+
+	if(NVAR_Exists(cHMM) && cHMM == 1)
 		maxState = gDstate
 	endif
 	

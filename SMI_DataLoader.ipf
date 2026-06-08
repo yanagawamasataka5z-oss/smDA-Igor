@@ -32,7 +32,7 @@ Function LoadAAS4_HMM_Path(PathName, SampleName)
 	String PathName, SampleName
 	
 	String FileName, FolderName, FileList
-	Variable i, FileNum, f, s, RowSize
+	Variable i, FileNum, f, s, RowSize, numCols, dstateCol
 	
 	NVAR scale = root:scale
 	NVAR framerate = root:framerate
@@ -88,7 +88,7 @@ Function LoadAAS4_HMM_Path(PathName, SampleName)
 		endif
 		
 		RowSize = DimSize(wave0, 0)
-		Variable numCols = DimSize(wave0, 1)
+		numCols = DimSize(wave0, 1)
 		Printf "    wave0 loaded: %d rows x %d cols\r", RowSize, numCols
 		
 		// 
@@ -114,7 +114,7 @@ Function LoadAAS4_HMM_Path(PathName, SampleName)
 		SigmaA = SigmaA * 1000  // nm
 		
 		// Segmentation
-		if(MaxSegment == 0)
+		if(MaxSegment == 0 || numCols < 18)
 			Segment = 0
 		else
 			Segment = wave0[p][17]
@@ -156,13 +156,17 @@ Function LoadAAS4_HMM_Path(PathName, SampleName)
 		
 		// DstateHMM
 		// AAS4Dstate
-		Variable dstateCol = 11 + Dstate  // Dstate=1→12, Dstate=2→13, etc.
-		for(f = 1; f < RowSize; f += 1)
-			TraceMatrix[f][7] = wave0[f-1][dstateCol]
-		endfor
-		// 
-		if(RowSize > 1)
-			TraceMatrix[0][7] = TraceMatrix[1][7]
+		dstateCol = 11 + Dstate  // Dstate=1→12, Dstate=2→13, etc.
+		if(numCols > dstateCol)
+			for(f = 1; f < RowSize; f += 1)
+				TraceMatrix[f][7] = wave0[f-1][dstateCol]
+			endfor
+			// 
+			if(RowSize > 1)
+				TraceMatrix[0][7] = TraceMatrix[1][7]
+			endif
+		else
+			TraceMatrix[][7] = 0
 		endif
 		
 		// NaN
@@ -378,13 +382,15 @@ Function LoadAAS2_HMM_Path(PathName, SampleName)
 	String PathName, SampleName
 	
 	String FileName, FolderName, FileList
-	Variable i, FileNum, f, s, RowSize
+	Variable i, FileNum, f, s, RowSize, numCols, dstateCol2
 	
 	NVAR scale = root:scale
 	NVAR framerate = root:framerate
 	NVAR Dstate = root:Dstate
 	NVAR ExCoef = root:ExCoef
 	NVAR QE = root:QE
+	NVAR/Z IntensityMode2 = root:IntensityMode
+	Variable intMode2 = NVAR_Exists(IntensityMode2) ? IntensityMode2 : 1
 	
 	NewPath/O/Q data PathName
 	NewDataFolder/O/S root:$(SampleName)
@@ -424,7 +430,7 @@ Function LoadAAS2_HMM_Path(PathName, SampleName)
 		endif
 		
 		RowSize = DimSize(wave0, 0)
-		Variable numCols = DimSize(wave0, 1)
+		numCols = DimSize(wave0, 1)
 		Printf "    wave0 loaded: %d rows x %d cols\r", RowSize, numCols
 		
 		// 
@@ -474,17 +480,25 @@ Function LoadAAS2_HMM_Path(PathName, SampleName)
 		TraceMatrix[][2] = wave0[p][1] - 1
 		TraceMatrix[][3] = wave0[p][2] * scale
 		TraceMatrix[][4] = wave0[p][3] * scale
-		TraceMatrix[][5] = wave0[p][10]
+		if(intMode2 == 0)
+			TraceMatrix[][5] = wave0[p][10]
+		else
+			TraceMatrix[][5] = wave0[p][10] * ExCoef / QE
+		endif
 		TraceMatrix[][6] = displacement[p]
 		
 		// DstateAAS2AAS4
-		Variable dstateCol2 = 11 + Dstate  // Dstate=1→12, Dstate=2→13, etc.
-		for(f = 1; f < RowSize; f += 1)
-			TraceMatrix[f][7] = wave0[f-1][dstateCol2]
-		endfor
-		// 
-		if(RowSize > 1)
-			TraceMatrix[0][7] = TraceMatrix[1][7]
+		dstateCol2 = 11 + Dstate  // Dstate=1→12, Dstate=2→13, etc.
+		if(numCols > dstateCol2)
+			for(f = 1; f < RowSize; f += 1)
+				TraceMatrix[f][7] = wave0[f-1][dstateCol2]
+			endfor
+			// 
+			if(RowSize > 1)
+				TraceMatrix[0][7] = TraceMatrix[1][7]
+			endif
+		else
+			TraceMatrix[][7] = 0
 		endif
 		
 		// NaN
@@ -728,18 +742,32 @@ End
 Function LoadAAS_NoHMM_Path(PathName, SampleName)
 	String PathName, SampleName
 	
-	String FileName, FolderName, FileList
-	Variable i, FileNum, f, RowSize
+	String FileName, FolderName, FileList, filteredList, fname_f
+	Variable i, FileNum, f, RowSize, ff, numCols, dstateCol
 	
 	NVAR scale = root:scale
 	NVAR framerate = root:framerate
 	NVAR ExCoef = root:ExCoef
 	NVAR QE = root:QE
+	NVAR/Z IntensityMode3 = root:IntensityMode
+	Variable intMode3 = NVAR_Exists(IntensityMode3) ? IntensityMode3 : 1
 	
 	NewPath/O/Q data PathName
 	NewDataFolder/O/S root:$(SampleName)
 	
 	FileList = IndexedFile(data, -1, ".csv")
+	
+	// Filter out *_hmm.csv files (HMM results should not be loaded as separate cells)
+	filteredList = ""
+
+	for(ff = 0; ff < ItemsInList(FileList); ff += 1)
+		fname_f = StringFromList(ff, FileList)
+		if(StringMatch(fname_f, "*_hmm.csv") == 0)
+			filteredList += fname_f + ";"
+		endif
+	endfor
+	FileList = filteredList
+	
 	FileNum = ItemsInList(FileList)
 	
 	Print "Loading " + num2str(FileNum) + " cell(s) [AAS] from: " + PathName
@@ -763,7 +791,7 @@ Function LoadAAS_NoHMM_Path(PathName, SampleName)
 		endif
 		
 		RowSize = DimSize(wave0, 0)
-		Variable numCols = DimSize(wave0, 1)
+		numCols = DimSize(wave0, 1)
 		Printf "    wave0 loaded: %d rows x %d cols\r", RowSize, numCols
 		
 		// 
@@ -812,7 +840,11 @@ Function LoadAAS_NoHMM_Path(PathName, SampleName)
 		TraceMatrix[][2] = wave0[p][1] - 1
 		TraceMatrix[][3] = wave0[p][2] * scale
 		TraceMatrix[][4] = wave0[p][3] * scale
-		TraceMatrix[][5] = wave0[p][10]
+		if(intMode3 == 0)
+			TraceMatrix[][5] = wave0[p][10]
+		else
+			TraceMatrix[][5] = wave0[p][10] * ExCoef / QE
+		endif
 		TraceMatrix[][6] = displacement[p]
 		
 		// 
@@ -846,7 +878,7 @@ Function MakeAnalysisWaves(SampleName)
 	String SampleName
 	
 	Variable numFolders = CountDataFolders(SampleName)
-	Variable m, f, nPts
+	Variable m, f, nPts, numCols, seg, count, segVal, idx, segV
 	String FolderName
 	
 	NVAR/Z MaxSegment = root:MaxSegment
@@ -872,16 +904,16 @@ Function MakeAnalysisWaves(SampleName)
 		endif
 		
 		nPts = DimSize(TraceMatrix, 0)
-		Variable numCols = DimSize(TraceMatrix, 1)
-		Variable seg
+		numCols = DimSize(TraceMatrix, 1)
+		seg = 0
 		
 		// Wave
 		for(seg = 0; seg <= maxSeg; seg += 1)
 			String suffix = "_S" + num2str(seg)
 			
 			// 
-			Variable count = 0
-			Variable segVal
+			count = 0
+			segVal = 0
 			for(f = 0; f < nPts; f += 1)
 				segVal = 0
 				if(numCols > 8)
@@ -919,8 +951,8 @@ Function MakeAnalysisWaves(SampleName)
 				Wave DstateW = $("Dstate" + suffix)
 			endif
 			
-			Variable idx = 0
-			Variable segV
+			idx = 0
+			segV = 0
 			for(f = 0; f < nPts; f += 1)
 				segV = 0
 				if(numCols > 8)
@@ -952,7 +984,7 @@ Function MakeAnalysisWavesS0(SampleName)
 	String SampleName
 	
 	Variable numFolders = CountDataFolders(SampleName)
-	Variable m, r, nPts, copyPts
+	Variable m, r, nPts, copyPts, numCols, sigSize, ExtDimSize, finalSize, nNaN, dst
 	String FolderName, folderPath
 	
 	NVAR framerate = root:framerate
@@ -976,7 +1008,7 @@ Function MakeAnalysisWavesS0(SampleName)
 		endif
 		
 		nPts = DimSize(TM, 0)
-		Variable numCols = DimSize(TM, 1)
+		numCols = DimSize(TM, 1)
 		
 		// WaveMake/O
 		Make/O/N=(nPts) $(folderPath + "ROI_S0")
@@ -1023,7 +1055,7 @@ Function MakeAnalysisWavesS0(SampleName)
 		
 		// SignalN_S0
 		if(WaveExists(SignalN))
-			Variable sigSize = numpnts(SignalN)
+			sigSize = numpnts(SignalN)
 			if(sigSize == nPts)
 				Duplicate/O SignalN, $(folderPath + "SignalN_S0")
 			else
@@ -1091,8 +1123,8 @@ Function MakeAnalysisWavesS0(SampleName)
 			endif
 		endif
 		
-		// ROINaN
-		// 
+		// ROI NaN separator insertion
+		// Batch method: O(n) instead of O(n²) InsertPoints
 		Wave ROI_S0r = $(folderPath + "ROI_S0")
 		Wave Rframe_S0r = $(folderPath + "Rframe_S0")
 		Wave Rtime_S0r = $(folderPath + "Rtime_S0")
@@ -1107,42 +1139,114 @@ Function MakeAnalysisWavesS0(SampleName)
 		Wave/Z LocPrecision_S0r = $(folderPath + "LocPrecision_S0")
 		Wave/Z Segment_S0r = $(folderPath + "Segment_S0")
 		
-		Variable ExtDimSize = numpnts(ROI_S0r)
+		// Pass 1: Count ROI transitions
+		ExtDimSize = numpnts(ROI_S0r)
+		nNaN = 0
 		for(r = 1; r < ExtDimSize; r += 1)
 			if(ROI_S0r[r] != ROI_S0r[r-1] && numtype(ROI_S0r[r]) == 0 && numtype(ROI_S0r[r-1]) == 0)
-				InsertPoints r, 1, ROI_S0r; ROI_S0r[r] = NaN
-				InsertPoints r, 1, Rframe_S0r; Rframe_S0r[r] = NaN
-				InsertPoints r, 1, Rtime_S0r; Rtime_S0r[r] = NaN
-				InsertPoints r, 1, Xum_S0r; Xum_S0r[r] = NaN
-				InsertPoints r, 1, Yum_S0r; Yum_S0r[r] = NaN
-				InsertPoints r, 1, Int_S0r; Int_S0r[r] = NaN
-				InsertPoints r, 1, DF_S0r; DF_S0r[r] = NaN
-				
-				if(WaveExists(Dstate_S0r))
-					InsertPoints r, 1, Dstate_S0r; Dstate_S0r[r] = NaN
-				endif
-				if(WaveExists(SignalN_S0r))
-					InsertPoints r, 1, SignalN_S0r; SignalN_S0r[r] = NaN
-				endif
-				if(WaveExists(SigmaA_S0r))
-					InsertPoints r, 1, SigmaA_S0r; SigmaA_S0r[r] = NaN
-				endif
-				if(WaveExists(BackN_S0r))
-					InsertPoints r, 1, BackN_S0r; BackN_S0r[r] = NaN
-				endif
-				if(WaveExists(LocPrecision_S0r))
-					InsertPoints r, 1, LocPrecision_S0r; LocPrecision_S0r[r] = NaN
-				endif
-				if(WaveExists(Segment_S0r))
-					InsertPoints r, 1, Segment_S0r; Segment_S0r[r] = NaN
-				endif
-				
-				ExtDimSize += 1
-				r += 1
+				nNaN += 1
 			endif
 		endfor
 		
-		Printf "  %s: %d points (NaN)\r", FolderName, numpnts(ROI_S0r)
+		if(nNaN > 0)
+			// Pass 2: Create new waves and copy with NaN gaps
+			finalSize = ExtDimSize + nNaN
+			Make/O/N=(finalSize) tmpROI=NaN, tmpRf=NaN, tmpRt=NaN, tmpX=NaN, tmpY=NaN, tmpInt=NaN, tmpDF=NaN
+			Make/O/N=(finalSize) tmpDs=NaN, tmpSN=NaN, tmpSA=NaN, tmpBN=NaN, tmpLP=NaN, tmpSeg=NaN
+			
+			dst = 0
+			tmpROI[0] = ROI_S0r[0]
+			tmpRf[0] = Rframe_S0r[0]
+			tmpRt[0] = Rtime_S0r[0]
+			tmpX[0] = Xum_S0r[0]
+			tmpY[0] = Yum_S0r[0]
+			tmpInt[0] = Int_S0r[0]
+			tmpDF[0] = DF_S0r[0]
+			if(WaveExists(Dstate_S0r))
+				tmpDs[0] = Dstate_S0r[0]
+			endif
+			if(WaveExists(SignalN_S0r))
+				tmpSN[0] = SignalN_S0r[0]
+			endif
+			if(WaveExists(SigmaA_S0r))
+				tmpSA[0] = SigmaA_S0r[0]
+			endif
+			if(WaveExists(BackN_S0r))
+				tmpBN[0] = BackN_S0r[0]
+			endif
+			if(WaveExists(LocPrecision_S0r))
+				tmpLP[0] = LocPrecision_S0r[0]
+			endif
+			if(WaveExists(Segment_S0r))
+				tmpSeg[0] = Segment_S0r[0]
+			endif
+			dst = 1
+			
+			for(r = 1; r < ExtDimSize; r += 1)
+				if(ROI_S0r[r] != ROI_S0r[r-1] && numtype(ROI_S0r[r]) == 0 && numtype(ROI_S0r[r-1]) == 0)
+					// NaN separator (tmpROI[dst] already NaN)
+					dst += 1
+				endif
+				tmpROI[dst] = ROI_S0r[r]
+				tmpRf[dst] = Rframe_S0r[r]
+				tmpRt[dst] = Rtime_S0r[r]
+				tmpX[dst] = Xum_S0r[r]
+				tmpY[dst] = Yum_S0r[r]
+				tmpInt[dst] = Int_S0r[r]
+				tmpDF[dst] = DF_S0r[r]
+				if(WaveExists(Dstate_S0r))
+					tmpDs[dst] = Dstate_S0r[r]
+				endif
+				if(WaveExists(SignalN_S0r))
+					tmpSN[dst] = SignalN_S0r[r]
+				endif
+				if(WaveExists(SigmaA_S0r))
+					tmpSA[dst] = SigmaA_S0r[r]
+				endif
+				if(WaveExists(BackN_S0r))
+					tmpBN[dst] = BackN_S0r[r]
+				endif
+				if(WaveExists(LocPrecision_S0r))
+					tmpLP[dst] = LocPrecision_S0r[r]
+				endif
+				if(WaveExists(Segment_S0r))
+					tmpSeg[dst] = Segment_S0r[r]
+				endif
+				dst += 1
+			endfor
+			
+			// Overwrite originals
+			Duplicate/O tmpROI, ROI_S0r
+			Duplicate/O tmpRf, Rframe_S0r
+			Duplicate/O tmpRt, Rtime_S0r
+			Duplicate/O tmpX, Xum_S0r
+			Duplicate/O tmpY, Yum_S0r
+			Duplicate/O tmpInt, Int_S0r
+			Duplicate/O tmpDF, DF_S0r
+			if(WaveExists(Dstate_S0r))
+				Duplicate/O tmpDs, Dstate_S0r
+			endif
+			if(WaveExists(SignalN_S0r))
+				Duplicate/O tmpSN, SignalN_S0r
+			endif
+			if(WaveExists(SigmaA_S0r))
+				Duplicate/O tmpSA, SigmaA_S0r
+			endif
+			if(WaveExists(BackN_S0r))
+				Duplicate/O tmpBN, BackN_S0r
+			endif
+			if(WaveExists(LocPrecision_S0r))
+				Duplicate/O tmpLP, LocPrecision_S0r
+			endif
+			if(WaveExists(Segment_S0r))
+				Duplicate/O tmpSeg, Segment_S0r
+			endif
+			
+			KillWaves/Z tmpROI, tmpRf, tmpRt, tmpX, tmpY, tmpInt, tmpDF
+			KillWaves/Z tmpDs, tmpSN, tmpSA, tmpBN, tmpLP, tmpSeg
+		endif
+		
+		Printf "  %s: %d points (%d NaN separators)\r", FolderName, numpnts(ROI_S0r), nNaN
 	endfor
 	
 	SetDataFolder root:
@@ -1188,7 +1292,7 @@ Function ValidateLoadedData(SampleName)
 	
 	Variable numFolders = CountDataFolders(SampleName)
 	Variable errors = 0
-	Variable m
+	Variable m, nPts
 	String FolderName
 	
 	Print "Validating data for " + SampleName + "..."
@@ -1211,7 +1315,7 @@ Function ValidateLoadedData(SampleName)
 			continue
 		endif
 		
-		Variable nPts = DimSize(TraceMatrix, 0)
+		nPts = DimSize(TraceMatrix, 0)
 		if(nPts == 0)
 			Print "  Warning: Empty TraceMatrix in " + FolderName
 		endif
@@ -1842,18 +1946,23 @@ Function SingleSampleAnalysis(fullPath, SampleName)
 	NVAR/Z cAAS2 = root:cAAS2
 	NVAR/Z cAAS4 = root:cAAS4
 	NVAR/Z cHMM = root:cHMM
-	NVAR/Z Dstate = root:Dstate
-	NVAR/Z maxOlig = root:MaxOligomerSize
-	NVAR/Z fitType = root:FitType  // MSD (0:free, 1:confined, 2:confined+err)
-	NVAR/Z maxExp = root:ExpMax_off
-	
+	NVAR Dstate = root:Dstate
+	NVAR maxOlig = root:MaxOligomerSize
+	NVAR fitType = root:FitType  // MSD (0:free, 1:confined, 2:confined+err)
+	NVAR maxExp = root:ExpMax_off
+
 	Variable isAAS2 = NVAR_Exists(cAAS2) ? cAAS2 : 0
 	Variable isAAS4 = NVAR_Exists(cAAS4) ? cAAS4 : 1
 	Variable isHMM = NVAR_Exists(cHMM) ? cHMM : 1
-	Variable dstateVal = NVAR_Exists(Dstate) ? Dstate : 4
-	Variable maxOligVal = NVAR_Exists(maxOlig) ? maxOlig : 4
-	Variable fitTypeVal = NVAR_Exists(fitType) ? fitType : 2  // : +
-	Variable maxExpVal = NVAR_Exists(maxExp) ? maxExp : 3
+	Variable dstateVal = Dstate
+	Variable maxOligVal = maxOlig
+	Variable fitTypeVal = fitType  // : +
+	Variable maxExpVal = maxExp
+	
+	// Image integration variables (used in Step 0.1 and Step 3.5)
+	Variable imgImportMode, fi, nTrCells, trCell
+	Variable fixMeanVal, fixSDVal
+	String csvFileListStr, trCellFolder, trGraphName
 	
 	// v2v4OFFv4
 	if(!isAAS2 && !isAAS4)
@@ -1918,6 +2027,45 @@ Function SingleSampleAnalysis(fullPath, SampleName)
 		MakeAnalysisWavesHMM(SampleName)
 	EndIf
 	
+	// ========================================
+	// Step 0.05: Compare Lower Bound (HMM only)
+	// ========================================
+	if(isHMM && dstateVal > 0)
+		Print "\r--- Step 0.05: Compare Lower Bound ---"
+		CompareLowerBound(SampleName)
+	endif
+	
+	// ========================================
+	// Step 0.1: Image Loading (if cImage=1)
+	// ========================================
+	NVAR/Z cImageFlag = root:cImage
+	Variable doImage = NVAR_Exists(cImageFlag) ? cImageFlag : 0
+	Variable nTifLoaded = 0
+	if(doImage)
+		Print "\r--- Step 0.1: Load Matching TIF Images ---"
+		// Read import mode from tab0 popup
+		ControlInfo/W=SMI_MainPanel tab0_importmode
+		imgImportMode = V_Value
+		if(imgImportMode < 1 || imgImportMode > 2)
+			imgImportMode = 1
+		endif
+		// Use symbolic path "data" created during CSV loading
+		NewPath/O/Q data fullPath
+		// Get file list from FileNameList wave
+		SetDataFolder $("root:" + SampleName)
+		Wave/T/Z fnList = FileNameList
+		if(WaveExists(fnList))
+			csvFileListStr = ""
+			for(fi = 0; fi < numpnts(fnList); fi += 1)
+				csvFileListStr += fnList[fi] + ";"
+			endfor
+			// SMLM_LoadMatchingTIF removed (SMI_SMLM.ipf excluded from public release)
+		endif
+		SetDataFolder root:
+		
+		// Pixel value extraction removed (SMI_SMLM.ipf excluded from public release)
+	endif
+	
 	// Results
 	CreateResultsFolder(SampleName)
 	
@@ -1926,6 +2074,12 @@ Function SingleSampleAnalysis(fullPath, SampleName)
 	// ========================================
 	NVAR/Z MaxSegment = root:MaxSegment
 	Variable doSeg = NVAR_Exists(MaxSegment) && MaxSegment >= 1
+	if(doSeg && isAAS2)
+		Print "  WARNING: Segmentation requires AAS v4 format (Segment column)."
+		Print "  AAS v2 does not contain Segment data. Please set Seg=0 and re-run."
+		DoAlert 0, "Segmentation is not available with AAS v2.\rPlease set Seg=0 in the Common tab."
+		doSeg = 0
+	endif
 	if(doSeg)
 		Print "\r--- Step 0.5: Segmentation Split ---"
 		RunSegmentationSplit(SampleName)
@@ -2008,7 +2162,8 @@ Function SingleSampleAnalysis(fullPath, SampleName)
 			// Fix Mean/SD
 			NVAR/Z cFixMean = root:cFixMean
 			NVAR/Z cFixSD = root:cFixSD
-			Variable fixMeanVal = 0, fixSDVal = 0
+			fixMeanVal = 0
+			fixSDVal = 0
 			if(NVAR_Exists(cFixMean))
 				fixMeanVal = cFixMean
 			endif
@@ -2127,6 +2282,9 @@ Function SingleSampleAnalysis(fullPath, SampleName)
 		Print "\r--- Step 3.5: Trajectory ---"
 		Print "  Trajectory (XY Plot)..."
 		Trace_HMM(SampleName)
+		
+		// TIF background overlay removed (SMI_SMLM.ipf excluded from public release)
+		
 		Print "  Origin-Aligned Trajectory..."
 		CreateOriginAlignedTrajectory(SampleName)
 		// Seg
@@ -2182,6 +2340,281 @@ Function SingleSampleAnalysis(fullPath, SampleName)
 	// SampleName
 	String/G root:gCurrentSampleName = SampleName
 	
+	return numLoaded
+End
+
+// -----------------------------------------------------------------------------
+// ReanalyzeSingleSample - Same as SingleSampleAnalysis but skips Load (Step 0)
+// Uses existing data in Igor data folders (TraceMatrix + analysis waves).
+// Called by ReanalyzeAllProc for _rand folders and other pre-loaded data.
+// -----------------------------------------------------------------------------
+Function ReanalyzeSingleSample(SampleName)
+	String SampleName
+
+	Print "=========================================="
+	Printf "Reanalyze Sample: %s\r", SampleName
+	Print "=========================================="
+
+	// Verify sample folder exists and has cell subfolders
+	if(!DataFolderExists("root:" + SampleName))
+		Printf "ReanalyzeSingleSample: folder not found - %s\r", SampleName
+		return -1
+	endif
+
+	Variable numLoaded = CountDataFolders(SampleName)
+	if(numLoaded <= 0)
+		Printf "ReanalyzeSingleSample: no cell subfolders in %s\r", SampleName
+		return -1
+	endif
+	Printf "Found %d cells in %s\r", numLoaded, SampleName
+
+	// Read checkbox settings (same as SingleSampleAnalysis)
+	NVAR/Z cHMM = root:cHMM
+	NVAR Dstate = root:Dstate
+	NVAR maxOlig = root:MaxOligomerSize
+	NVAR fitType = root:FitType
+	NVAR maxExp = root:ExpMax_off
+
+	Variable isHMM = NVAR_Exists(cHMM) ? cHMM : 1
+	Variable dstateVal = Dstate
+	Variable maxOligVal = maxOlig
+	Variable fitTypeVal = fitType
+	Variable maxExpVal = maxExp
+	Variable fixMeanVal, fixSDVal
+
+	SetCurrentSampleName(SampleName)
+
+	// Create Results folder if missing
+	CreateResultsFolder(SampleName)
+
+	// ========================================
+	// Step 0.5: Segmentation Split
+	// ========================================
+	NVAR/Z MaxSegment = root:MaxSegment
+	Variable doSeg = NVAR_Exists(MaxSegment) && MaxSegment >= 1
+	if(doSeg)
+		Print "\r--- Step 0.5: Segmentation Split ---"
+		RunSegmentationSplit(SampleName)
+	endif
+
+	// Read analysis checkboxes
+	NVAR/Z cRunMSD = root:cRunMSD
+	NVAR/Z cRunStepSize = root:cRunStepSize
+	NVAR/Z cRunIntensity = root:cRunIntensity
+	NVAR/Z cRunLP = root:cRunLP
+	NVAR/Z cRunDensity = root:cRunDensity
+	NVAR/Z cRunMolDensity = root:cRunMolDensity
+	NVAR/Z cRunOffrate = root:cRunOffrate
+	NVAR/Z cRunOnrate = root:cRunOnrate
+	NVAR/Z cRunStateTransition = root:cRunStateTransition
+
+	Variable doMSD = NVAR_Exists(cRunMSD) ? cRunMSD : 1
+	Variable doStepSize = NVAR_Exists(cRunStepSize) ? cRunStepSize : 1
+	Variable doIntensity = NVAR_Exists(cRunIntensity) ? cRunIntensity : 1
+	Variable doLP = NVAR_Exists(cRunLP) ? cRunLP : 1
+	Variable doDensity = NVAR_Exists(cRunDensity) ? cRunDensity : 1
+	Variable doMolDensity = NVAR_Exists(cRunMolDensity) ? cRunMolDensity : 1
+	Variable doOffrate = NVAR_Exists(cRunOffrate) ? cRunOffrate : 1
+	Variable doOnrate = NVAR_Exists(cRunOnrate) ? cRunOnrate : 1
+	Variable doStateTransition = NVAR_Exists(cRunStateTransition) ? cRunStateTransition : 1
+
+	// ========================================
+	// Step 1: Diffusion
+	// ========================================
+	Print "\r--- Step 1: Diffusion Analysis ---"
+	Variable segIdx
+	String segBase, segSuf
+	If(doMSD)
+		Print "  MSD Analysis..."
+		SMI_AnalyzeMSD(SampleName, fitTypeVal)
+		if(doSeg)
+			for(segIdx = 0; segIdx <= MaxSegment; segIdx += 1)
+				segBase = GetSegmentFolderPath(segIdx)
+				segSuf = GetSegmentSuffix(segIdx)
+				Printf "  MSD Analysis (Seg%d)...\r", segIdx
+				CalculateMSD(SampleName, basePath=segBase, waveSuffix=segSuf)
+				FitMSD_Safe(SampleName, fitTypeVal, basePath=segBase, waveSuffix=segSuf)
+				DisplayMSDGraphHMM(SampleName, basePath=segBase, waveSuffix=segSuf)
+			endfor
+		endif
+	Else
+		Print "  MSD Analysis [SKIPPED]"
+	EndIf
+
+	If(doStepSize)
+		Print "  Step Size Analysis..."
+		SMI_AnalyzeStepSize(SampleName)
+		if(doSeg)
+			for(segIdx = 0; segIdx <= MaxSegment; segIdx += 1)
+				segBase = GetSegmentFolderPath(segIdx)
+				segSuf = GetSegmentSuffix(segIdx)
+				Printf "  Step Size Analysis (Seg%d)...\r", segIdx
+				CalculateStepSizeHistogramHMM(SampleName, basePath=segBase, waveSuffix=segSuf)
+				FitStepSizeDistributionHMM(SampleName, 1, basePath=segBase, waveSuffix=segSuf)
+				DisplayStepSizeHistogramHMM(SampleName, basePath=segBase, waveSuffix=segSuf)
+			endfor
+		endif
+	Else
+		Print "  Step Size Analysis [SKIPPED]"
+	EndIf
+
+	// ========================================
+	// Step 2: Intensity
+	// ========================================
+	Print "\r--- Step 2: Intensity Analysis ---"
+	If(doIntensity)
+		Print "  Intensity Histogram..."
+		SMI_AnalyzeIntensity(SampleName, maxOligVal)
+		if(doSeg)
+			NVAR/Z cFixMean = root:cFixMean
+			NVAR/Z cFixSD = root:cFixSD
+			fixMeanVal = 0
+			fixSDVal = 0
+			if(NVAR_Exists(cFixMean))
+				fixMeanVal = cFixMean
+			endif
+			if(NVAR_Exists(cFixSD))
+				fixSDVal = cFixSD
+			endif
+			for(segIdx = 0; segIdx <= MaxSegment; segIdx += 1)
+				segBase = GetSegmentFolderPath(segIdx)
+				segSuf = GetSegmentSuffix(segIdx)
+				Printf "  Intensity Histogram (Seg%d)...\r", segIdx
+				CreateIntensityHistogram(SampleName, basePath=segBase, waveSuffix=segSuf)
+				GlobalFitIntensity(SampleName, maxOligVal, fixMeanVal, fixSDVal, basePath=segBase, waveSuffix=segSuf)
+				DisplayIntensityHistHMM(SampleName, basePath=segBase, waveSuffix=segSuf)
+				CalculatePopulationFromCoefEx(SampleName, segBase, segSuf)
+			endfor
+		endif
+	Else
+		Print "  Intensity Histogram [SKIPPED]"
+	EndIf
+
+	If(doLP)
+		Print "  Localization Precision..."
+		SMI_AnalyzeLP(SampleName)
+		if(doSeg)
+			for(segIdx = 0; segIdx <= MaxSegment; segIdx += 1)
+				segBase = GetSegmentFolderPath(segIdx)
+				segSuf = GetSegmentSuffix(segIdx)
+				Printf "  Localization Precision (Seg%d)...\r", segIdx
+				CalculateLPHistogram(SampleName, basePath=segBase, waveSuffix=segSuf)
+				DisplayLPHistogram(SampleName, basePath=segBase, waveSuffix=segSuf)
+			endfor
+		endif
+	Else
+		Print "  Localization Precision [SKIPPED]"
+	EndIf
+
+	If(doDensity)
+		Print "  Density Analysis..."
+		SMI_AnalyzeDensity(SampleName)
+		if(doSeg)
+			for(segIdx = 0; segIdx <= MaxSegment; segIdx += 1)
+				segBase = GetSegmentFolderPath(segIdx)
+				segSuf = GetSegmentSuffix(segIdx)
+				Printf "  Density Analysis (Seg%d)...\r", segIdx
+				Density_Gcount(SampleName, basePath=segBase, waveSuffix=segSuf)
+				DisplayDensityGcount(SampleName, basePath=segBase, waveSuffix=segSuf)
+			endfor
+		endif
+	Else
+		Print "  Density Analysis [SKIPPED]"
+	EndIf
+
+	If(doMolDensity)
+		Print "  Molecular Density..."
+		SMI_AnalyzeMolDensity(SampleName)
+		if(doSeg)
+			for(segIdx = 0; segIdx <= MaxSegment; segIdx += 1)
+				segBase = GetSegmentFolderPath(segIdx)
+				segSuf = GetSegmentSuffix(segIdx)
+				Printf "  Molecular Density (Seg%d)...\r", segIdx
+				CalculateMolecularDensity(SampleName, basePath=segBase, waveSuffix=segSuf)
+				DisplayMolecularDensity(SampleName, basePath=segBase, waveSuffix=segSuf)
+			endfor
+		endif
+	Else
+		Print "  Molecular Density [SKIPPED]"
+	EndIf
+
+	// ========================================
+	// Step 3: Kinetics
+	// ========================================
+	Print "\r--- Step 3: Kinetics Analysis ---"
+	If(doOffrate)
+		Print "  Off-rate (Duration)..."
+		Duration_Gcount(SampleName)
+		if(doSeg)
+			for(segIdx = 0; segIdx <= MaxSegment; segIdx += 1)
+				segBase = GetSegmentFolderPath(segIdx)
+				segSuf = GetSegmentSuffix(segIdx)
+				Printf "  Off-rate (Duration) (Seg%d)...\r", segIdx
+				Duration_Gcount(SampleName, basePath=segBase, waveSuffix=segSuf)
+			endfor
+		endif
+	Else
+		Print "  Off-rate (Duration) [SKIPPED]"
+	EndIf
+
+	If(doOnrate)
+		Print "  On-rate..."
+		OnrateAnalysisWithOption(SampleName)
+		if(doSeg)
+			for(segIdx = 0; segIdx <= MaxSegment; segIdx += 1)
+				segBase = GetSegmentFolderPath(segIdx)
+				segSuf = GetSegmentSuffix(segIdx)
+				Printf "  On-rate (Seg%d)...\r", segIdx
+				OnrateAnalysisWithOption(SampleName, basePath=segBase, waveSuffix=segSuf)
+			endfor
+		endif
+	Else
+		Print "  On-rate [SKIPPED]"
+	EndIf
+
+	// ========================================
+	// Step 3.5: Trajectory & State Transition
+	// ========================================
+	NVAR/Z cRunTrajectory = root:cRunTrajectory
+	Variable doTrajectory = NVAR_Exists(cRunTrajectory) ? cRunTrajectory : 0
+	If(doTrajectory)
+		Print "\r--- Step 3.5: Trajectory ---"
+		Trace_HMM(SampleName)
+		CreateOriginAlignedTrajectory(SampleName)
+		if(doSeg)
+			for(segIdx = 0; segIdx <= MaxSegment; segIdx += 1)
+				segBase = GetSegmentFolderPath(segIdx)
+				segSuf = GetSegmentSuffix(segIdx)
+				Printf "  Trajectory (Seg%d)...\r", segIdx
+				Trace_HMM(SampleName, basePath=segBase, waveSuffix=segSuf)
+				CreateOriginAlignedTrajectory(SampleName, basePath=segBase, waveSuffix=segSuf)
+			endfor
+		endif
+	EndIf
+
+	If(NVAR_Exists(cHMM) && cHMM == 1 && doStateTransition)
+		Print "\r--- Step 3.6: State Transition Analysis ---"
+		RunStateTransitionAnalysis(SampleName)
+	EndIf
+
+	// ========================================
+	// Step 4: Matrix & Statistics
+	// ========================================
+	Print "\r--- Step 4: Matrix Creation & Statistics ---"
+	StatsResultsMatrix("root", SampleName, "")
+	if(doSeg)
+		for(segIdx = 0; segIdx <= MaxSegment; segIdx += 1)
+			segBase = GetSegmentFolderPath(segIdx)
+			Printf "  Statistics (Seg%d)...\r", segIdx
+			StatsResultsMatrix(segBase, SampleName, "")
+		endfor
+	endif
+
+	Print "\r=========================================="
+	Printf "Reanalyze Complete: %s (%d cells)\r", SampleName, numLoaded
+	Print "=========================================="
+
+	String/G root:gCurrentSampleName = SampleName
 	return numLoaded
 End
 

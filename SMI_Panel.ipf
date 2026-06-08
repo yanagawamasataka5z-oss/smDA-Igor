@@ -32,7 +32,7 @@ Function CreateMainPanel()
 	endif
 	
 	// 
-	NewPanel/K=1/W=(50, 30, 50+kPanelWidth, 30+kPanelHeight) as "smDA - single-molecule Dynamics Analyzer v4.2.0e"
+	NewPanel/K=1/W=(50, 30, 50+kPanelWidth, 30+kPanelHeight) as "smDA - single-molecule Dynamics Analyzer v5.4.6"
 	DoWindow/C SMI_MainPanel
 	
 	// 
@@ -47,8 +47,8 @@ Function CreateMainPanel()
 	TabControl mainTab, tabLabel(7)="Timelapse"
 	TabControl mainTab, tabLabel(8)="Layout Single"
 	TabControl mainTab, tabLabel(9)="Layout Col"
-	
-	// 
+
+	//
 	CreateCommonTab()
 	CreateDataLoadingTab()
 	CreateDiffusionTab()
@@ -59,8 +59,8 @@ Function CreateMainPanel()
 	CreateTimelapseTab()
 	CreateLayoutTab()
 	CreateLayoutColTab()
-	
-	// 
+
+	//
 	TitleBox statusBar, pos={kMargin, kPanelHeight-25}, size={kPanelWidth-2*kMargin, 20}
 	TitleBox statusBar, title="Ready", frame=0, fStyle=2
 	
@@ -127,7 +127,7 @@ static Function CreateCommonTab()
 	
 	SetVariable tab0_scale, pos={xPos+270, yPos}, size={100, kControlHeight}
 	SetVariable tab0_scale, title="Scale:", value=root:scale
-	SetVariable tab0_scale, limits={0.01, 1, 0.001}
+	SetVariable tab0_scale, limits={0.01, 1, 0.001}, proc=UpdateDerivedParamsProc
 	
 	yPos += kControlSpacing
 	SetVariable tab0_roiSize, pos={xPos+10, yPos}, size={110, kControlHeight}
@@ -140,12 +140,12 @@ static Function CreateCommonTab()
 	
 	SetVariable tab0_pixnum, pos={xPos+240, yPos}, size={130, kControlHeight}
 	SetVariable tab0_pixnum, title="Pix Num:", value=root:PixNum
-	SetVariable tab0_pixnum, limits={64, 2048, 64}
+	SetVariable tab0_pixnum, limits={64, 2048, 64}, proc=UpdateDerivedParamsProc
 	
 	yPos += kControlSpacing
 	SetVariable tab0_excoef, pos={xPos+10, yPos}, size={110, kControlHeight}
 	SetVariable tab0_excoef, title="ExCoef:", value=root:ExCoef
-	SetVariable tab0_excoef, limits={0.01, 10, 0.01}
+	SetVariable tab0_excoef, limits={0.0001, 1000, 0.01}
 	
 	SetVariable tab0_qe, pos={xPos+130, yPos}, size={100, kControlHeight}
 	SetVariable tab0_qe, title="QE:", value=root:QE
@@ -182,9 +182,18 @@ static Function CreateCommonTab()
 	SetVariable tab0_segment, limits={0, 100, 1}
 	
 	yPos += kControlSpacing + 5
-	TitleBox tab0_format_info, pos={xPos+10, yPos}, size={350, kControlHeight}
-	TitleBox tab0_format_info, title="v2/v4: AAS version / HMM: load *_hmm.csv / n: HMM states"
-	TitleBox tab0_format_info, frame=0, fStyle=2, fSize=10
+	// Row 2: Additional input format checkboxes
+	CheckBox tab0_chk_trackmate, pos={xPos+10, yPos}, size={80, kControlHeight}
+	CheckBox tab0_chk_trackmate, title="TrackMate", variable=root:cTrackMate
+	
+	CheckBox tab0_chk_vbspt, pos={xPos+115, yPos}, size={60, kControlHeight}
+	CheckBox tab0_chk_vbspt, title="vbSPT", variable=root:cVBSPT
+	
+	CheckBox tab0_chk_image, pos={xPos+200, yPos}, size={60, kControlHeight}
+	CheckBox tab0_chk_image, title="Image", variable=root:cImage
+	
+	PopupMenu tab0_importmode, pos={xPos+270, yPos}, size={105, 22}
+	PopupMenu tab0_importmode, value="Multi TIF;Averaged TIF", mode=1
 	
 	yPos += kControlSpacing
 	Button tab0_btn_init, pos={xPos+10, yPos}, size={115, 28}
@@ -194,6 +203,11 @@ static Function CreateCommonTab()
 	Button tab0_btn_save, title="Save Settings", proc=SaveSettingsButtonProc
 	Button tab0_btn_load, pos={xPos+250, yPos}, size={115, 28}
 	Button tab0_btn_load, title="Load Settings", proc=LoadSettingsButtonProc
+	
+	// Annotation below Data Format GroupBox
+	TitleBox tab0_format_info, pos={xPos+10, 173}, size={370, kControlHeight}
+	TitleBox tab0_format_info, title="v2/v4: AAS version / HMM: load *_hmm.csv / n: HMM states / Image: load matching TIF"
+	TitleBox tab0_format_info, frame=0, fStyle=2, fSize=10
 	
 	// === Single Sample Analysis1 ===
 	xPos = kMargin + 10
@@ -251,7 +265,7 @@ static Function CreateCommonTab()
 	Button tab0_btn_autoall, help={"Run: Batch → Clear Graph → Clear Table → Average → Compare"}
 	
 	// : Inner GroupBox
-	GroupBox tab0_grp5a, pos={xPos+175, yPos-5}, size={590, 50}, title="Individual Steps"
+	GroupBox tab0_grp5a, pos={xPos+175, yPos-5}, size={405, 50}, title="Individual Steps"
 	
 	Button tab0_btn_batch, pos={xPos+185, yPos+8}, size={110, 32}
 	Button tab0_btn_batch, title="Batch", proc=BatchAnalysisProc, fStyle=1, fColor=(0,0,65535)
@@ -267,6 +281,10 @@ static Function CreateCommonTab()
 	
 	Button tab0_btn_compareall, pos={xPos+465, yPos+8}, size={110, 32}
 	Button tab0_btn_compareall, title="Compare All", proc=CompareAllButtonProc, fStyle=1, fColor=(0,52428,0)
+
+	Button tab0_btn_reanalyze, pos={xPos+595, yPos}, size={170, 40}
+	Button tab0_btn_reanalyze, title="Reanalyze All", proc=ReanalyzeAllProc, fStyle=1, fColor=(51664,44236,58982)
+	Button tab0_btn_reanalyze, help={"Reanalyze all existing sample folders (skip Load). For _rand, pre-loaded data."}
 	
 	// ===  ===
 	yPos = 420
@@ -310,22 +328,21 @@ static Function CreateDataLoadingTab()
 	
 	// ===  ===
 	yPos = 160
-	GroupBox tab1_grp2, pos={xPos, yPos}, size={groupWidth, 120}, title="Load Data (Format settings in Common tab)"
+	GroupBox tab1_grp2, pos={xPos, yPos}, size={groupWidth, 150}, title="Load Data (Format settings in Common tab)"
 	
-	yPos += 30
-	Button tab1_btn_load, pos={xPos+10, yPos}, size={180, 35}
+	// Row 1: Load Data
+	yPos += 25
+	Button tab1_btn_load, pos={xPos+10, yPos}, size={140, 40}
 	Button tab1_btn_load, title="Load Data", proc=LoadDataButtonProc, fStyle=1, fColor=(0,0,65535)
 	
-	TitleBox tab1_format_status, pos={xPos+200, yPos+8}, size={350, kControlHeight}
-	TitleBox tab1_format_status, title="Format: AAS4 + HMM (Dstate=4)", frame=0, fStyle=2
-	
-	yPos += 45
-	Button tab1_btn_compare_lb, pos={xPos+10, yPos}, size={180, 35}
-	Button tab1_btn_compare_lb, title="Compare Lower Bound", proc=CompareLowerBoundProc, fStyle=1, fColor=(0,52224,0)
+	// Row 2: Compare Lower Bound
+	yPos += 48
+	Button tab1_btn_compare_lb, pos={xPos+10, yPos}, size={140, 40}
+	Button tab1_btn_compare_lb, title="Compare LB", proc=CompareLowerBoundProc, fStyle=1, fColor=(0,52428,0)
 	Button tab1_btn_compare_lb, help={"Compare normalized Lower Bound across states within sample"}
 	
 	// === Trajectory ===
-	yPos = 300
+	yPos = 325
 	GroupBox tab1_grp3, pos={xPos, yPos}, size={groupWidth, 110}, title="Trajectory"
 	
 	// - 
@@ -371,7 +388,7 @@ static Function CreateDataLoadingTab()
 	TitleBox tab1_label_lthresh2, title="µm", frame=0
 	
 	// ===  ===
-	yPos = 430
+	yPos = 455
 	GroupBox tab1_grp4, pos={xPos, yPos}, size={groupWidth, 100}, title="Data Information"
 	
 	yPos += 25
@@ -426,9 +443,11 @@ static Function CreateIntensityTab()
 	SetVariable tab3_lognormsd, title="LogNorm SD:", value=root:SDIntLognorm
 	SetVariable tab3_lognormsd, limits={0.01, 1.0, 0.01}
 	
+	NVAR/Z gSumLogNorm = root:cSumLogNorm
+	Variable intFitMode = (NVAR_Exists(gSumLogNorm) && gSumLogNorm == 1) ? 2 : 1
 	PopupMenu tab3_intfittype, pos={xPos+190, yPos}, size={170, kControlHeight}
 	PopupMenu tab3_intfittype, title="Fit Func:", value="Gauss;LogNorm"
-	PopupMenu tab3_intfittype, mode=1, proc=IntFitTypePopupProc
+	PopupMenu tab3_intfittype, mode=intFitMode, proc=IntFitTypePopupProc
 	
 	yPos += kControlSpacing
 	CheckBox tab3_fixmean, pos={xPos+10, yPos}, size={80, kControlHeight}
@@ -582,9 +601,11 @@ static Function CreateDiffusionTab()
 	CheckBox tab2_moveave, title="Moving Average", variable=root:cMoveAve
 	
 	yPos += kControlSpacing
+	NVAR/Z gFitType = root:FitType
+	Variable fitTypeMode = NVAR_Exists(gFitType) ? gFitType + 1 : 3
 	PopupMenu tab2_fittype, pos={xPos+10, yPos}, size={170, kControlHeight}
 	PopupMenu tab2_fittype, title="Fit Type:", value="Free;Confined;Confined+Err;Anomalous;Anomalous+Err"
-	PopupMenu tab2_fittype, mode=3, proc=FitTypePopupProc
+	PopupMenu tab2_fittype, mode=fitTypeMode, proc=FitTypePopupProc
 	
 	yPos += kControlSpacing
 	SetVariable tab2_initd, pos={xPos+10, yPos}, size={170, kControlHeight}
@@ -785,11 +806,6 @@ static Function CreateKineticsTab()
 	CheckBox tab4_usedensity, proc=UseDensityCheckProc
 	
 	yPos += kControlSpacing
-	SetVariable tab4_onarea, pos={xPos+10, yPos}, size={220, kControlHeight}
-	SetVariable tab4_onarea, title="Fixed Area [µm²]:", value=root:OnArea
-	SetVariable tab4_onarea, limits={0.1, 10000, 10}
-	
-	yPos += kControlSpacing
 	SetVariable tab4_tauvon, pos={xPos+10, yPos}, size={170, kControlHeight}
 	SetVariable tab4_tauvon, title="Initial Tau [s]:", value=root:InitialTauon
 	SetVariable tab4_tauvon, limits={0.001, 1000, 1}
@@ -919,22 +935,43 @@ static Function CreateColocalizationTab()
 	Variable/G root:ColIntHistBin = 100		// 
 	Variable/G root:ColIntHistDim = 100		// 
 	Variable/G root:ColIndex = 1			// Col1/EC1, Col2/EC2, ...
-	// Compare Parameters 
-	Variable/G root:ColWeightingMode = 1	// 0=Particle, 1=MoleculeMolecule
-	Variable/G root:ColAffinityParam = 0	// 0=Kb, 1=Density, 2=Distance
-	Variable/G root:ColIntensityMode = 0	// 0=Simple, 1=Fitting
-	Variable/G root:ColDiffusionMode = 0	// 0=per Total, 1=per Col
-	Variable/G root:ColOntimeMode = 0		// 0=Simple, 1=Fitting
-	Variable/G root:ColOnrateMode = 0		// 0=On-event rate, 1=k_on
-	Variable/G root:ColOutputChannel = 0	// 0=Both, 1=C1, 2=C2
+	// Compare Parameters (preserve existing values if already set)
+	NVAR/Z gColWeightingMode = root:ColWeightingMode
+	NVAR/Z gColAffinityParam = root:ColAffinityParam
+	NVAR/Z gColIntensityMode = root:ColIntensityMode
+	NVAR/Z gColDiffusionMode = root:ColDiffusionMode
+	NVAR/Z gColOntimeMode = root:ColOntimeMode
+	NVAR/Z gColOnrateMode = root:ColOnrateMode
+	NVAR/Z gColOutputChannel = root:ColOutputChannel
+	if(!NVAR_Exists(gColWeightingMode))
+		Variable/G root:ColWeightingMode = 1	// 0=Particle, 1=Molecule
+	endif
+	if(!NVAR_Exists(gColAffinityParam))
+		Variable/G root:ColAffinityParam = 0	// 0=Kb, 1=Density, 2=Distance
+	endif
+	if(!NVAR_Exists(gColIntensityMode))
+		Variable/G root:ColIntensityMode = 0	// 0=Simple, 1=Fitting
+	endif
+	if(!NVAR_Exists(gColDiffusionMode))
+		Variable/G root:ColDiffusionMode = 0	// 0=per Total, 1=per Col
+	endif
+	if(!NVAR_Exists(gColOntimeMode))
+		Variable/G root:ColOntimeMode = 0		// 0=Simple, 1=Fitting
+	endif
+	if(!NVAR_Exists(gColOnrateMode))
+		Variable/G root:ColOnrateMode = 0		// 0=On-event rate, 1=k_on
+	endif
+	if(!NVAR_Exists(gColOutputChannel))
+		Variable/G root:ColOutputChannel = 0	// 0=Both, 1=C1, 2=C2
+	endif
 	// ColocalizationOn-timeAutoAnalysis
 	Variable/G root:ColTau1 = 0.05			// Colocalization Tau1 [s]
 	Variable/G root:ColTauScale = 5			// Colocalization Scale_tau
 	Variable/G root:ColA1 = 80				// Colocalization A1 [%]
 	Variable/G root:ColAScale = 0.5			// Colocalization Scale_A
 	// AutoAnalysisOn-time
-	Variable/G root:InitialTau1_off = 0.1	//  [s]
-	Variable/G root:TauScale_off = 10		// Tau (Tau_n = Tau1 * Scale^(n-1))
+	Variable/G root:InitialTau1_off = 0.5	//  [s]
+	Variable/G root:TauScale_off = 5		// Tau (Tau_n = Tau1 * Scale^(n-1))
 	Variable/G root:InitialA1_off = 80		// A1 [%]
 	Variable/G root:AScale_off = 0.5		// A (A_n = A1 * Scale^(n-1))
 	
@@ -944,35 +981,37 @@ static Function CreateColocalizationTab()
 	
 	// === Colocalization Settings===
 	GroupBox tab5_grp1, pos={xPos, yPos}, size={groupWidth, 210}, title="Colocalization Settings"
-	
+
 	yPos += 25
-	// Col Index: Col1/EC1, Col2/EC2, ...
-	SetVariable tab5_sv_colindex, pos={xPos+10, yPos}, size={170, kControlHeight}
-	SetVariable tab5_sv_colindex, title="Col/EC Index:", value=root:ColIndex
-	SetVariable tab5_sv_colindex, limits={1, 99, 1}, help={"Analysis folder: Col1/EC1, Col2/EC2, ..."}
-	
-	// Same HMM D-stateCol/EC Index
-	CheckBox tab5_chk_samedstate, pos={xPos+190, yPos}, size={180, kControlHeight}
+	// Same HMM D-state + Density Area (Min/Max)
+	CheckBox tab5_chk_samedstate, pos={xPos+10, yPos}, size={170, kControlHeight}
 	CheckBox tab5_chk_samedstate, title="Same HMM D-state", variable=root:cSameHMMD
-	
+
+	NVAR/Z gColAreaMode = root:ColAreaMode
+	Variable colAreaModeVal = NVAR_Exists(gColAreaMode) ? gColAreaMode : 1  // default=1 (max)
+	TitleBox tab5_info_areamode, pos={xPos+190, yPos+3}, size={80, 18}
+	TitleBox tab5_info_areamode, title="Area:", frame=0, fSize=12
+	PopupMenu tab5_pop_areamode, pos={xPos+230, yPos}, size={120, 20}
+	PopupMenu tab5_pop_areamode, mode=(colAreaModeVal + 1), value="Min;Max", proc=ColAreaModeProc
+
 	yPos += kControlSpacing
 	SetVariable tab5_sv_maxdist, pos={xPos+10, yPos}, size={170, kControlHeight}
 	SetVariable tab5_sv_maxdist, title="Max Distance [nm]:", value=root:MaxDistance
 	SetVariable tab5_sv_maxdist, limits={10, 1000, 10}
-	
+
 	SetVariable tab5_sv_maxdratio, pos={xPos+190, yPos}, size={170, kControlHeight}
 	SetVariable tab5_sv_maxdratio, title="Max D Ratio:", value=root:MaxDratio
 	SetVariable tab5_sv_maxdratio, limits={1, 100, 1}
-	
+
 	yPos += kControlSpacing
 	SetVariable tab5_sv_minframe, pos={xPos+10, yPos}, size={170, kControlHeight}
 	SetVariable tab5_sv_minframe, title="Min Frames:", value=root:ColMinFrame
 	SetVariable tab5_sv_minframe, limits={1, 100, 1}
-	
+
 	SetVariable tab5_sv_room, pos={xPos+190, yPos}, size={170, kControlHeight}
 	SetVariable tab5_sv_room, title="Room (frames):", value=root:ColRoom
 	SetVariable tab5_sv_room, limits={0, 10, 1}
-	
+
 	// Int hist:  + Bin/Dim
 	yPos += kControlSpacing
 	TitleBox tab5_info_inthist, pos={xPos+10, yPos+3}, size={50, 18}
@@ -1046,13 +1085,15 @@ static Function CreateColocalizationTab()
 	yPos += 45
 	TitleBox tab5_lbl_channel, pos={xPos+10, yPos+2}, size={50, 20}
 	TitleBox tab5_lbl_channel, title="Output:", frame=0
+	NVAR colChMode = root:ColOutputChannel
 	PopupMenu tab5_pop_channel, pos={xPos+60, yPos}, size={100, 20}
-	PopupMenu tab5_pop_channel, mode=1, value="Both;C1;C2", proc=ColChannelModeProc
+	PopupMenu tab5_pop_channel, mode=(colChMode + 1), value="Both;C1;C2", proc=ColChannelModeProc
 	
 	TitleBox tab5_lbl_weighting, pos={xPos+180, yPos+2}, size={60, 20}
 	TitleBox tab5_lbl_weighting, title="Weighting:", frame=0
+	NVAR colWtMode = root:ColWeightingMode
 	PopupMenu tab5_pop_weighting, pos={xPos+250, yPos}, size={100, 20}
-	PopupMenu tab5_pop_weighting, mode=2, value="Particle;Molecule", proc=ColWeightingModeProc
+	PopupMenu tab5_pop_weighting, mode=(colWtMode + 1), value="Particle;Molecule", proc=ColWeightingModeProc
 	
 	// === Batch Analysis- 6 ===
 	// : Find, Trajectory, Intensity, Diffusion, On-time, On-rate
@@ -1115,32 +1156,37 @@ static Function CreateColocalizationTab()
 	// Affinity
 	Button tab5_btn_cmpaffinity, pos={xPos+10, yPos}, size={btnWidth, btnHeight}
 	Button tab5_btn_cmpaffinity, title="Affinity", proc=ColCmpAffinityProc, fColor=(0,52428,0)
+	NVAR/Z gColAffParam = root:ColAffinityParam
 	PopupMenu tab5_pop_affinity, pos={xPos+10, yPos+btnHeight+2}, size={popWidth, 20}
-	PopupMenu tab5_pop_affinity, mode=1, value="Kb;Density;Distance", proc=ColAffinityParamProc
+	PopupMenu tab5_pop_affinity, mode=(NVAR_Exists(gColAffParam) ? gColAffParam + 1 : 1), value="Kb;Density;Distance", proc=ColAffinityParamProc
 	
 	// Intensity
 	Button tab5_btn_cmpint, pos={xPos+160, yPos}, size={btnWidth, btnHeight}
 	Button tab5_btn_cmpint, title="Intensity", proc=ColCmpIntensityProc, fColor=(0,52428,0)
+	NVAR/Z gColIntMode = root:ColIntensityMode
 	PopupMenu tab5_pop_intensity, pos={xPos+160, yPos+btnHeight+2}, size={popWidth, 20}
-	PopupMenu tab5_pop_intensity, mode=1, value="Simple;Fitting", proc=ColIntensityModeProc
+	PopupMenu tab5_pop_intensity, mode=(NVAR_Exists(gColIntMode) ? gColIntMode + 1 : 1), value="Simple;Fitting", proc=ColIntensityModeProc
 	
 	// D-state (Population)
 	Button tab5_btn_cmpdiff, pos={xPos+310, yPos}, size={btnWidth, btnHeight}
 	Button tab5_btn_cmpdiff, title="D-state", proc=ColCmpDiffusionProc, fColor=(0,52428,0)
+	NVAR/Z gColDiffMode = root:ColDiffusionMode
 	PopupMenu tab5_pop_diffusion, pos={xPos+310, yPos+btnHeight+2}, size={popWidth, 20}
-	PopupMenu tab5_pop_diffusion, mode=1, value="per Total;per Col;Steps", proc=ColDiffusionModeProc
+	PopupMenu tab5_pop_diffusion, mode=(NVAR_Exists(gColDiffMode) ? gColDiffMode + 1 : 1), value="per Total;per Col;Steps", proc=ColDiffusionModeProc
 	
 	// On-time
 	Button tab5_btn_cmpontime, pos={xPos+460, yPos}, size={btnWidth, btnHeight}
 	Button tab5_btn_cmpontime, title="On-time", proc=ColCmpOntimeProc, fColor=(0,52428,0)
+	NVAR/Z gColOntMode = root:ColOntimeMode
 	PopupMenu tab5_pop_ontime, pos={xPos+460, yPos+btnHeight+2}, size={popWidth, 20}
-	PopupMenu tab5_pop_ontime, mode=1, value="Simple;Fitting", proc=ColOntimeModeProc
+	PopupMenu tab5_pop_ontime, mode=(NVAR_Exists(gColOntMode) ? gColOntMode + 1 : 1), value="Simple;Fitting", proc=ColOntimeModeProc
 	
 	// On-rate
 	Button tab5_btn_cmponrate, pos={xPos+610, yPos}, size={btnWidth, btnHeight}
 	Button tab5_btn_cmponrate, title="On-rate", proc=ColCmpOnrateProc, fColor=(0,52428,0)
+	NVAR/Z gColOnrMode = root:ColOnrateMode
 	PopupMenu tab5_pop_onrate, pos={xPos+610, yPos+btnHeight+2}, size={popWidth, 20}
-	PopupMenu tab5_pop_onrate, mode=1, value="On-event rate;k\\Bon\\M", proc=ColOnrateModeProc
+	PopupMenu tab5_pop_onrate, mode=(NVAR_Exists(gColOnrMode) ? gColOnrMode + 1 : 1), value="On-event rate;k\\Bon\\M", proc=ColOnrateModeProc
 	
 	// === Status Information===
 	xPos = kMargin + 10
@@ -1162,7 +1208,7 @@ static Function CreateStatisticsTab()
 	Variable groupWidth = 380
 	
 	// === Summary Plot===
-	GroupBox tab6_grp2, pos={xPos, yPos}, size={groupWidth, 315}, title="Statistical Tests (Summary Plot)"
+	GroupBox tab6_grp2, pos={xPos, yPos}, size={groupWidth, 215}, title="Statistical Tests (Summary Plot)"
 	
 	// Run in Auto Analysis 
 	CheckBox tab6_chk_autotest, pos={xPos+200, yPos-2}, size={180, kControlHeight}
@@ -1208,44 +1254,29 @@ static Function CreateStatisticsTab()
 	CheckBox tab6_chk_table, pos={xPos+230, yPos}, size={80, 20}
 	CheckBox tab6_chk_table, title="Table", variable=root:cStatOutputTable
 	
-	// AllPairs
+	// Bracket display parameters (separate GroupBox below grp2)
 	yPos += 35
-	TitleBox tab6_title5, pos={xPos+10, yPos}, size={150, 20}
-	TitleBox tab6_title5, title="All Pairs display:", frame=0
+	GroupBox tab6_grp_bracket, pos={xPos, yPos}, size={groupWidth, 55}, title="Significance Bracket"
 	
 	yPos += 22
-	TitleBox tab6_label_linespace, pos={xPos+10, yPos+2}, size={80, 20}
-	TitleBox tab6_label_linespace, title="Line Space:", frame=0
-	SetVariable tab6_sv_linespace, pos={xPos+90, yPos}, size={70, kControlHeight}
-	SetVariable tab6_sv_linespace, limits={-20,0,1}, value=_NUM:-10
+	SetVariable tab6_sv_xoff, pos={xPos+8, yPos}, size={65, kControlHeight}
+	SetVariable tab6_sv_xoff, title="X:", limits={-2,2,0.1}, value=root:StatBracket_XOffset
 	
-	TitleBox tab6_label_yoffset, pos={xPos+180, yPos+2}, size={80, 20}
-	TitleBox tab6_label_yoffset, title="Y Offset (%):", frame=0
-	SetVariable tab6_sv_yoffset, pos={xPos+270, yPos}, size={70, kControlHeight}
-	SetVariable tab6_sv_yoffset, limits={1,20,1}, value=_NUM:5
+	SetVariable tab6_sv_starty, pos={xPos+80, yPos}, size={70, kControlHeight}
+	SetVariable tab6_sv_starty, title="Y0:", limits={1.0,2.0,0.05}, value=root:StatBracket_StartY
 	
-	yPos += 25
-	TitleBox tab6_label_barfont, pos={xPos+10, yPos+2}, size={80, 20}
-	TitleBox tab6_label_barfont, title="Bar Font:", frame=0
-	SetVariable tab6_sv_barfont, pos={xPos+90, yPos}, size={70, kControlHeight}
-	SetVariable tab6_sv_barfont, limits={6,20,1}, value=_NUM:10
+	SetVariable tab6_sv_stepy, pos={xPos+157, yPos}, size={68, kControlHeight}
+	SetVariable tab6_sv_stepy, title="dY:", limits={0.03,0.50,0.01}, value=root:StatBracket_StepY
+	
+	SetVariable tab6_sv_tickh, pos={xPos+232, yPos}, size={75, kControlHeight}
+	SetVariable tab6_sv_tickh, title="Tick:", limits={0.01,0.20,0.01}, value=root:StatBracket_TickH
+	
+	SetVariable tab6_sv_tgap, pos={xPos+314, yPos}, size={60, kControlHeight}
+	SetVariable tab6_sv_tgap, title="*:", limits={0.01,0.30,0.01}, value=root:StatBracket_TextGap
 	
 	yPos += 30
 	TitleBox tab6_title2, pos={xPos+10, yPos}, size={350, 40}
 	TitleBox tab6_title2, title="All tests assume unequal variances", frame=0
-	
-	// ===  ===
-	yPos += 30
-	GroupBox tab6_grp3, pos={xPos, yPos}, size={groupWidth, 50}, title="Summary Plot Size"
-	
-	yPos += 22
-	TitleBox tab6_label_graphwidth, pos={xPos+10, yPos+2}, size={80, 20}
-	TitleBox tab6_label_graphwidth, title="Graph Width:", frame=0
-	SetVariable tab6_sv_graphwidth, pos={xPos+100, yPos}, size={100, kControlHeight}
-	SetVariable tab6_sv_graphwidth, limits={100,600,10}, value=root:GraphWidth
-	
-	TitleBox tab6_unit_graphwidth, pos={xPos+205, yPos+2}, size={80, 20}
-	TitleBox tab6_unit_graphwidth, title="points", frame=0
 End
 
 // =============================================================================
@@ -1334,6 +1365,7 @@ Function SaveSettingsButtonProc(ctrlName) : ButtonControl
 	WriteParamToFile(refNum, "LogIntensityScale")
 	WriteParamToFile(refNum, "cFixMean")
 	WriteParamToFile(refNum, "cFixSD")
+	WriteParamToFile(refNum, "cFixIntParameters")
 	
 	// ===  ===
 	WriteParamToFile(refNum, "LPhistBin")
@@ -1351,6 +1383,7 @@ Function SaveSettingsButtonProc(ctrlName) : ButtonControl
 	WriteParamToFile(refNum, "AlphaFix")
 	WriteParamToFile(refNum, "cMoveAve")
 	WriteParamToFile(refNum, "StepHistBin")
+	WriteParamToFile(refNum, "StepHistDim")
 	WriteParamToFile(refNum, "StepDeltaTMin")
 	WriteParamToFile(refNum, "StepDeltaTMax")
 	WriteParamToFile(refNum, "StepFitMinStates")
@@ -1366,6 +1399,7 @@ Function SaveSettingsButtonProc(ctrlName) : ButtonControl
 	WriteParamToFile(refNum, "DensityEndFrame")
 	
 	// === On-time (Off-rate)  ===
+	WriteParamToFile(refNum, "cORC")
 	WriteParamToFile(refNum, "ExpMin_off")
 	WriteParamToFile(refNum, "ExpMax_off")
 	WriteParamToFile(refNum, "InitialTau1_off")
@@ -1394,6 +1428,7 @@ Function SaveSettingsButtonProc(ctrlName) : ButtonControl
 	WriteParamToFile(refNum, "ColA1")
 	WriteParamToFile(refNum, "ColAScale")
 	WriteParamToFile(refNum, "ColWeightingMode")
+	WriteParamToFile(refNum, "ColAreaMode")
 	WriteParamToFile(refNum, "ColAffinityParam")
 	WriteParamToFile(refNum, "ColIntensityMode")
 	WriteParamToFile(refNum, "ColDiffusionMode")
@@ -1411,6 +1446,29 @@ Function SaveSettingsButtonProc(ctrlName) : ButtonControl
 	WriteParamToFile(refNum, "TimePoints")
 	WriteParamToFile(refNum, "TimeStimulation")
 	WriteParamToFile(refNum, "TL_NormMethod")
+	WriteParamToFile(refNum, "TL_DataSource")
+	
+	// === Input Format ===
+	WriteParamToFile(refNum, "cTrackMate")
+	WriteParamToFile(refNum, "cVBSPT")
+	WriteParamToFile(refNum, "cImage")
+	WriteParamToFile(refNum, "PVHistBin")
+	WriteParamToFile(refNum, "PVHistDim")
+
+	// === Layout ===
+	WriteParamToFile(refNum, "LayoutPageW")
+	WriteParamToFile(refNum, "LayoutPageH")
+	WriteParamToFile(refNum, "LayoutDivW")
+	WriteParamToFile(refNum, "LayoutDivH")
+	WriteParamToFile(refNum, "LayoutGap")
+	WriteParamToFile(refNum, "LayoutOffset")
+	
+	// === Significance Bracket ===
+	WriteParamToFile(refNum, "StatBracket_XOffset")
+	WriteParamToFile(refNum, "StatBracket_TextGap")
+	WriteParamToFile(refNum, "StatBracket_StartY")
+	WriteParamToFile(refNum, "StatBracket_StepY")
+	WriteParamToFile(refNum, "StatBracket_TickH")
 	
 	Close refNum
 	
@@ -1482,6 +1540,63 @@ Function LoadSettingsButtonProc(ctrlName) : ButtonControl
 	// 
 	UpdateFormatStatus()
 	
+	// Sync popup modes with loaded values
+	NVAR/Z loadedFitType = root:FitType
+	if(NVAR_Exists(loadedFitType))
+		PopupMenu tab2_fittype, win=SMI_MainPanel, mode=(loadedFitType + 1)
+	endif
+	NVAR/Z lColAffinity = root:ColAffinityParam
+	if(NVAR_Exists(lColAffinity))
+		PopupMenu tab5_pop_affinity, win=SMI_MainPanel, mode=(lColAffinity + 1)
+		PopupMenu tab9_pop_affinity, win=SMI_MainPanel, mode=(lColAffinity + 1)
+	endif
+	NVAR/Z lColIntensity = root:ColIntensityMode
+	if(NVAR_Exists(lColIntensity))
+		PopupMenu tab5_pop_intensity, win=SMI_MainPanel, mode=(lColIntensity + 1)
+		PopupMenu tab9_pop_intensity, win=SMI_MainPanel, mode=(lColIntensity + 1)
+	endif
+	NVAR/Z lColDiffusion = root:ColDiffusionMode
+	if(NVAR_Exists(lColDiffusion))
+		PopupMenu tab5_pop_diffusion, win=SMI_MainPanel, mode=(lColDiffusion + 1)
+		PopupMenu tab9_pop_diffusion, win=SMI_MainPanel, mode=(lColDiffusion + 1)
+	endif
+	NVAR/Z lColOntime = root:ColOntimeMode
+	if(NVAR_Exists(lColOntime))
+		PopupMenu tab5_pop_ontime, win=SMI_MainPanel, mode=(lColOntime + 1)
+		PopupMenu tab9_pop_ontime, win=SMI_MainPanel, mode=(lColOntime + 1)
+	endif
+	NVAR/Z lColOnrate = root:ColOnrateMode
+	if(NVAR_Exists(lColOnrate))
+		PopupMenu tab5_pop_onrate, win=SMI_MainPanel, mode=(lColOnrate + 1)
+		PopupMenu tab9_pop_onrate, win=SMI_MainPanel, mode=(lColOnrate + 1)
+	endif
+	NVAR/Z lColOutCh = root:ColOutputChannel
+	if(NVAR_Exists(lColOutCh))
+		PopupMenu tab5_pop_channel, win=SMI_MainPanel, mode=(lColOutCh + 1)
+		PopupMenu tab9_pop_outchan, win=SMI_MainPanel, mode=(lColOutCh + 1)
+		PopupMenu tab9_pop_channel, win=SMI_MainPanel, mode=(lColOutCh + 1)
+	endif
+	NVAR/Z lColWtMode = root:ColWeightingMode
+	if(NVAR_Exists(lColWtMode))
+		PopupMenu tab5_pop_weighting, win=SMI_MainPanel, mode=(lColWtMode + 1)
+		PopupMenu tab9_pop_weighting, win=SMI_MainPanel, mode=(lColWtMode + 1)
+	endif
+	NVAR/Z lTL_NormMeth = root:TL_NormMethod
+	if(NVAR_Exists(lTL_NormMeth))
+		PopupMenu tab7_popup_normby, win=SMI_MainPanel, mode=(lTL_NormMeth + 1)
+		PopupMenu tab7_popup_normby2, win=SMI_MainPanel, mode=(lTL_NormMeth + 1)
+	endif
+	NVAR/Z lTL_DataSrc = root:TL_DataSource
+	if(NVAR_Exists(lTL_DataSrc))
+		PopupMenu tab7_popup_datasource, win=SMI_MainPanel, mode=(lTL_DataSrc + 1)
+	endif
+	
+	// Sync IntensityMode popup
+	NVAR/Z lIntMode = root:IntensityMode
+	if(NVAR_Exists(lIntMode))
+		PopupMenu tab0_intensitymode, win=SMI_MainPanel, mode=(lIntMode + 1)
+	endif
+
 	UpdateStatusBar("Settings loaded from: " + fileName)
 	Print "Settings loaded from: " + fileName
 End
@@ -1495,6 +1610,9 @@ static Function SetGlobalParamByName(paramName, value)
 	NVAR/Z v = $fullPath
 	if(NVAR_Exists(v))
 		v = value
+	else
+		// Create variable if not found (backward compatibility: new params in settings file)
+		Variable/G $fullPath = value
 	endif
 End
 
@@ -1513,12 +1631,23 @@ Function LoadDataButtonProc(ctrlName) : ButtonControl
 	String fullPath = ""
 	
 	if(useUserDefined)
-		// SampleName
-		ControlInfo/W=SMI_MainPanel tab1_samplename
-		sampleName = S_Value
+		// Read SampleName from global variable (same as FullAllAnalysisProc)
+		SVAR/Z gSampleName = root:gSampleNameInput
+		if(SVAR_Exists(gSampleName))
+			sampleName = gSampleName
+		endif
 		
 		if(strlen(sampleName) == 0)
 			DoAlert 0, "Please enter a sample name"
+			return 0
+		endif
+		
+		// Open folder dialog to get path
+		GetFileFolderInfo/D/Q
+		fullPath = S_Path
+		
+		if(strlen(fullPath) == 0)
+			UpdateStatusBar("Cancelled")
 			return 0
 		endif
 	else
@@ -1580,12 +1709,12 @@ Function LoadDataButtonProc(ctrlName) : ButtonControl
 	UpdateStatusBar("Loading " + formatStr + " data...")
 	Variable numLoaded = 0
 	
-	if(useUserDefined || strlen(fullPath) == 0)
-		// user-defined modeLoadDialog
-		numLoaded = SMI_LoadData(sampleName)
-	else
-		// 
+	if(strlen(fullPath) > 0)
+		// Path specified (both user-defined and auto mode)
 		numLoaded = SMI_LoadDataPath(fullPath, sampleName)
+	else
+		// Fallback: open file dialog
+		numLoaded = SMI_LoadData(sampleName)
 	endif
 	
 	if(numLoaded == 0)
@@ -2092,31 +2221,23 @@ Function IntFitTypePopupProc(ctrlName, popNum, popStr) : PopupMenuControl
 	endif
 End
 
-// Use Density 
+// Auto-update OnArea when PixNum or scale changes: OnArea = (PixNum * scale)^2
+Function UpdateDerivedParamsProc(sva) : SetVariableControl
+	STRUCT WMSetVariableAction &sva
+	if(sva.eventCode != 1 && sva.eventCode != 2 && sva.eventCode != 8)
+		return 0
+	endif
+	NVAR PixNum = root:PixNum
+	NVAR scale = root:scale
+	NVAR OnArea = root:OnArea
+	OnArea = (PixNum * scale) * (PixNum * scale)
+	return 0
+End
+
+// Use Density
 Function UseDensityCheckProc(ctrlName, checked) : CheckBoxControl
 	String ctrlName
 	Variable checked
-	
-	// 
-	DoWindow SMI_MainPanel
-	if(V_flag == 0)
-		return 0
-	endif
-	
-	// 
-	ControlInfo/W=SMI_MainPanel tab4_onarea
-	if(V_flag == 0)
-		return 0
-	endif
-	
-	// Fixed Area/
-	if(checked)
-		// DensityArea
-		SetVariable tab4_onarea, win=SMI_MainPanel, disable=2
-	else
-		// Area
-		SetVariable tab4_onarea, win=SMI_MainPanel, disable=0
-	endif
 End
 
 // On-rate
@@ -2197,13 +2318,10 @@ Function UserDefinedNameCheckProc(ctrlName, checked) : CheckBoxControl
 	endif
 	
 	// Sample Name/
-	if(checked)
-		// SampleName
-		SetVariable tab0_samplename, win=SMI_MainPanel, disable=0
-	else
-		// SampleName
-		SetVariable tab0_samplename, win=SMI_MainPanel, disable=2
-	endif
+	Variable disableVal = checked ? 0 : 2
+	
+	// tab0 (AutoAnalysis)
+	SetVariable tab0_samplename, win=SMI_MainPanel, disable=disableVal
 End
 
 // AAS v2 v4
@@ -2448,8 +2566,8 @@ End
 // Single Analysis 
 Function FullAllAnalysisProc(ctrlName) : ButtonControl
 	String ctrlName
-	
-	// 
+
+	//
 	NVAR/Z cUseUserDefined = root:cUseUserDefinedName
 	Variable useUserDefined = NVAR_Exists(cUseUserDefined) ? cUseUserDefined : 0
 	
@@ -2564,6 +2682,63 @@ Function AutoAnalysisAllProc(ctrlName) : ButtonControl
 	Printf "========================================\r"
 	
 	UpdateStatusBar("Auto Analysis All complete")
+End
+
+// Reanalyze All: run full analysis pipeline on all existing Igor data folders (skip Load)
+// Automatically enumerates root: folders, excluding system/utility folders and Index_*
+Function ReanalyzeAllProc(ctrlName) : ButtonControl
+	String ctrlName
+
+	// Enumerate all sample folders (same filter as GetAnalyzedSampleList)
+	String sampleList = GetAnalyzedSampleList()
+	if(CmpStr(sampleList, "(No samples loaded)") == 0)
+		DoAlert 0, "No sample folders found in Igor."
+		return -1
+	endif
+
+	Variable numSamples = ItemsInList(sampleList)
+	Printf "Reanalyze All: found %d sample folders\r", numSamples
+
+	EnsureGlobalParameters()
+
+	Variable ii, successCount = 0
+	String oneSample
+	Variable sampleResult
+
+	Printf "========================================\r"
+	Printf "=== Reanalyze All (%d samples) ===\r", numSamples
+	Printf "========================================\r"
+
+	for(ii = 0; ii < numSamples; ii += 1)
+		oneSample = StringFromList(ii, sampleList)
+		Printf "\r========== [%d/%d] %s ==========\r", ii+1, numSamples, oneSample
+		sampleResult = ReanalyzeSingleSample(oneSample)
+		if(sampleResult > 0)
+			successCount += 1
+		endif
+	endfor
+
+	// Post-processing (same as AutoAnalysisAllProc)
+	Print "Reanalyze: Clear All Graphs..."
+	ClearAllGraphs()
+
+	Print "Reanalyze: Clear All Tables..."
+	ClearAllTables()
+
+	Print "Reanalyze: Average All..."
+	AverageAllButtonProc("auto")
+
+	Print "Reanalyze: Compare All..."
+	CompareAllButtonProc("auto")
+
+	Print "Reanalyze: Cleanup..."
+	CleanupTempWaves(verbose=0)
+
+	Printf "========================================\r"
+	Printf "=== Reanalyze All Complete: %d / %d ===\r", successCount, numSamples
+	Printf "========================================\r"
+
+	UpdateStatusBar("Reanalyze All complete: " + num2str(successCount) + " / " + num2str(numSamples) + " samples")
 End
 
 // Batch Analysis 
@@ -2730,7 +2905,6 @@ Function AverageAllButtonProc(ctrlName) : ButtonControl
 	UpdateStatusBar("Average All completed")
 End
 
-
 Function TTestButtonProc(ctrlName) : ButtonControl
 	String ctrlName
 	
@@ -2822,7 +2996,6 @@ Function KinOutputModeCheckProc(ctrlName, checked) : CheckBoxControl
 		cKinOutputTau = 0
 	endif
 End
-
 
 // =============================================================================
 // Helper Functions
@@ -3198,9 +3371,13 @@ static Function CreateTimelapseTab()
 	TitleBox tab7_lbl_datasource, pos={innerX+540, innerY+3}, size={70, 20}
 	TitleBox tab7_lbl_datasource, title="Data Source:", frame=0, fStyle=1
 	
-	Variable/G root:TL_DataSource = 0  // 0=Per Channel, 1=Colocalization
+	NVAR/Z gTL_DataSrc = root:TL_DataSource
+	if(!NVAR_Exists(gTL_DataSrc))
+		Variable/G root:TL_DataSource = 0  // 0=Per Channel, 1=Colocalization
+		NVAR/Z gTL_DataSrc = root:TL_DataSource
+	endif
 	PopupMenu tab7_popup_datasource, pos={innerX+620, innerY}, size={130, 20}
-	PopupMenu tab7_popup_datasource, mode=1, value="Single Channel;Colocalization", proc=TL_DataSourceProc
+	PopupMenu tab7_popup_datasource, mode=(gTL_DataSrc + 1), value="Single Channel;Colocalization", proc=TL_DataSourceProc
 	
 	innerY += 25
 	
@@ -3250,11 +3427,15 @@ static Function CreateTimelapseTab()
 	Button tab7_btn_difference, fColor=(0,0,65535), fSize=12
 	
 	// Mean / Each cell
-	Variable/G root:TL_NormMethod = 0  // 0=Mean, 1=Each cell
+	NVAR/Z gTL_NormMeth = root:TL_NormMethod
+	if(!NVAR_Exists(gTL_NormMeth))
+		Variable/G root:TL_NormMethod = 0  // 0=Mean, 1=Each cell
+		NVAR/Z gTL_NormMeth = root:TL_NormMethod
+	endif
 	TitleBox tab7_lbl_normby, pos={innerX+420, innerY+5}, size={85, 20}
 	TitleBox tab7_lbl_normby, title="Normalized by:", frame=0, fStyle=1
 	PopupMenu tab7_popup_normby, pos={innerX+510, innerY+2}, size={100, 22}
-	PopupMenu tab7_popup_normby, mode=1, value="Mean;Each cell", proc=TL_NormMethodProc
+	PopupMenu tab7_popup_normby, mode=(gTL_NormMeth + 1), value="Mean;Each cell", proc=TL_NormMethodProc
 	
 	// 
 	innerY += 32
@@ -3285,7 +3466,7 @@ static Function CreateTimelapseTab()
 	TitleBox tab7_lbl_normby2, pos={innerX+420, innerY+5}, size={85, 20}
 	TitleBox tab7_lbl_normby2, title="Normalized by:", frame=0, fStyle=1
 	PopupMenu tab7_popup_normby2, pos={innerX+510, innerY+2}, size={100, 22}
-	PopupMenu tab7_popup_normby2, mode=1, value="Mean;Each cell", proc=TL_NormMethodProc
+	PopupMenu tab7_popup_normby2, mode=(gTL_NormMeth + 1), value="Mean;Each cell", proc=TL_NormMethodProc
 	
 	innerY += 35
 	TitleBox tab7_lbl_compareinfo, pos={innerX, innerY}, size={500, 20}
@@ -3708,8 +3889,9 @@ static Function CreateLayoutColTab()
 	
 	// Output: 
 	TitleBox tab9_lbl_outchan, pos={innerX+650, innerY+2}, size={40, 16}, title="Output:", frame=0
+	NVAR/Z gColOutCh = root:ColOutputChannel
 	PopupMenu tab9_pop_outchan, pos={innerX+695, innerY}, size={75, 18}
-	PopupMenu tab9_pop_outchan, title="", mode=1, value="Both;C1;C2", proc=ColChannelModeProc
+	PopupMenu tab9_pop_outchan, title="", mode=(NVAR_Exists(gColOutCh) ? gColOutCh + 1 : 1), value="Both;C1;C2", proc=ColChannelModeProc
 	
 	yPos += 45
 	
@@ -3838,25 +4020,31 @@ static Function CreateLayoutColTab()
 	innerY += rowH + 2
 	
 	// --- ---
+	NVAR/Z gColAffinity = root:ColAffinityParam
+	NVAR/Z gColIntensity = root:ColIntensityMode
+	NVAR/Z gColDiffusion = root:ColDiffusionMode
+	NVAR/Z gColOntime = root:ColOntimeMode
+	NVAR/Z gColOnrate = root:ColOnrateMode
+	
 	TitleBox tab9_lbl_c_mode, pos={innerX, innerY+2}, size={lblW, 16}, title="Mode:", frame=0, fStyle=1
 	PopupMenu tab9_pop_affinity, pos={btnX-6, innerY}, size={65, 18}
-	PopupMenu tab9_pop_affinity, title="", mode=1, value="Kb;Density;Distance"
+	PopupMenu tab9_pop_affinity, title="", mode=(NVAR_Exists(gColAffinity) ? gColAffinity + 1 : 1), value="Kb;Density;Distance"
 	PopupMenu tab9_pop_affinity, proc=ColAffinityModePopupProc
 	
 	PopupMenu tab9_pop_intensity, pos={btnX+70-6, innerY}, size={65, 18}
-	PopupMenu tab9_pop_intensity, title="", mode=1, value="Simple;Fitting"
+	PopupMenu tab9_pop_intensity, title="", mode=(NVAR_Exists(gColIntensity) ? gColIntensity + 1 : 1), value="Simple;Fitting"
 	PopupMenu tab9_pop_intensity, proc=ColIntensityModePopupProc
 	
 	PopupMenu tab9_pop_diffusion, pos={btnX+140-6, innerY}, size={65, 18}
-	PopupMenu tab9_pop_diffusion, title="", mode=1, value="perTotal;perCol;Steps"
+	PopupMenu tab9_pop_diffusion, title="", mode=(NVAR_Exists(gColDiffusion) ? gColDiffusion + 1 : 1), value="perTotal;perCol;Steps"
 	PopupMenu tab9_pop_diffusion, proc=ColDiffusionModePopupProc
 	
 	PopupMenu tab9_pop_ontime, pos={btnX+210-6, innerY}, size={65, 18}
-	PopupMenu tab9_pop_ontime, title="", mode=1, value="Simple;Fitting"
+	PopupMenu tab9_pop_ontime, title="", mode=(NVAR_Exists(gColOntime) ? gColOntime + 1 : 1), value="Simple;Fitting"
 	PopupMenu tab9_pop_ontime, proc=ColOntimeModePopupProc
 	
 	PopupMenu tab9_pop_onrate, pos={btnX+280-6, innerY}, size={65, 18}
-	PopupMenu tab9_pop_onrate, title="", mode=1, value="On-event;k_on"
+	PopupMenu tab9_pop_onrate, title="", mode=(NVAR_Exists(gColOnrate) ? gColOnrate + 1 : 1), value="On-event;k_on"
 	PopupMenu tab9_pop_onrate, proc=ColOnrateModePopupProc
 	
 	innerY += rowH + 2
@@ -3864,11 +4052,12 @@ static Function CreateLayoutColTab()
 	// --- Output/Weighting ---
 	TitleBox tab9_lbl_c_output, pos={innerX, innerY+2}, size={40, 16}, title="Output:", frame=0, fStyle=1
 	PopupMenu tab9_pop_channel, pos={innerX+45, innerY}, size={80, 18}
-	PopupMenu tab9_pop_channel, title="", mode=1, value="Both;C1;C2", proc=ColChannelModeProc
+	PopupMenu tab9_pop_channel, title="", mode=(NVAR_Exists(gColOutCh) ? gColOutCh + 1 : 1), value="Both;C1;C2", proc=ColChannelModeProc
 	
 	TitleBox tab9_lbl_c_weight, pos={innerX+140, innerY+2}, size={55, 16}, title="Weighting:", frame=0, fStyle=1
+	NVAR/Z gColWtMode = root:ColWeightingMode
 	PopupMenu tab9_pop_weighting, pos={innerX+200, innerY}, size={80, 18}
-	PopupMenu tab9_pop_weighting, title="", mode=2, value="Particle;Molecule", proc=ColWeightingModeProc
+	PopupMenu tab9_pop_weighting, title="", mode=(NVAR_Exists(gColWtMode) ? gColWtMode + 1 : 1), value="Particle;Molecule", proc=ColWeightingModeProc
 	
 	// ==========================================================================
 	// : Layout Settings 
@@ -3943,7 +4132,6 @@ static Function CreateLayoutColTab()
 	TitleBox tab9_lbl_info, pos={innerX, innerY}, size={370, 32}
 	TitleBox tab9_lbl_info, title="Shortcuts: Ctrl+7=Clear Layout, Ctrl+8=Clear Table, Ctrl+9=Clear Graph", frame=0, fStyle=2
 End
-
 
 // Layout ColProcColocalization tab
 Function ColAffinityModePopupProc(ctrlName, popNum, popStr) : PopupMenuControl
@@ -4156,7 +4344,6 @@ Function TL_CreateLayoutButtonProc(ctrlName) : ButtonControl
 	// MolDensImg_*
 	TL_CreateMolDensLayout(pageW, pageH, offset_mm, gap_mm, divW, divH, outputMode)
 End
-End
 
 // -----------------------------------------------------------------------------
 // Clear All Proc Functions
@@ -4271,3 +4458,4 @@ Function TL_DxIImageButtonProc(ctrlName) : ButtonControl
 	String ctrlName
 	TL_CreateDxIImage()
 End
+

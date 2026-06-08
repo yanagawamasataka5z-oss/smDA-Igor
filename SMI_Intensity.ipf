@@ -142,20 +142,13 @@ Function Density_Gcount(SampleName, [basePath, waveSuffix])
 	NVAR RHistBin = root:RHistBin
 	NVAR RHistDim = root:RHistDim
 	NVAR DSmoothing = root:DSmoothing
-	NVAR/Z DensityStartFrame = root:DensityStartFrame
-	NVAR/Z DensityEndFrame = root:DensityEndFrame
-	
-	Variable StartFrame = 1
-	Variable EndFrame = 100
-	if(NVAR_Exists(DensityStartFrame))
-		StartFrame = DensityStartFrame
-	endif
-	if(NVAR_Exists(DensityEndFrame))
-		EndFrame = DensityEndFrame
-	endif
-	
+	NVAR DensityStartFrame = root:DensityStartFrame
+	NVAR DensityEndFrame = root:DensityEndFrame
+	Variable StartFrame = DensityStartFrame
+	Variable EndFrame = DensityEndFrame
+
 	Variable range = EndFrame - StartFrame + 1
-	
+
 	Variable numFolders
 	if(StringMatch(basePath, "root"))
 		numFolders = CountDataFolders(SampleName)
@@ -560,20 +553,13 @@ Function DisplayDensityGcount(SampleName, [basePath, waveSuffix])
 	NVAR framerate = root:framerate
 	NVAR RHistBin = root:RHistBin
 	NVAR RHistDim = root:RHistDim
-	NVAR/Z DensityStartFrame = root:DensityStartFrame
-	NVAR/Z DensityEndFrame = root:DensityEndFrame
-	
-	Variable StartFrame = 1
-	Variable EndFrame = 100
-	if(NVAR_Exists(DensityStartFrame))
-		StartFrame = DensityStartFrame
-	endif
-	if(NVAR_Exists(DensityEndFrame))
-		EndFrame = DensityEndFrame
-	endif
-	
+	NVAR DensityStartFrame = root:DensityStartFrame
+	NVAR DensityEndFrame = root:DensityEndFrame
+	Variable StartFrame = DensityStartFrame
+	Variable EndFrame = DensityEndFrame
+
 	Variable range = EndFrame - StartFrame + 1
-	
+
 	Variable numFolders
 	if(StringMatch(basePath, "root"))
 		numFolders = CountDataFolders(SampleName)
@@ -713,8 +699,10 @@ Function DisplayDensityGcount(SampleName, [basePath, waveSuffix])
 			
 			Label bottom "X μm"
 			Label left "Y μm"
-			SetAxis bottom 0, 34.2
-			SetAxis left 0, 34.2
+			NVAR PixNum = root:PixNum
+			Variable axisMax = scale * PixNum
+			SetAxis bottom 0, axisMax
+			SetAxis left 0, axisMax
 			ModifyGraph gbRGB=(0, 0, 0)
 			ModifyGraph tickRGB(bottom)=(65535, 65535, 65535)
 			ModifyGraph tickRGB(left)=(65535, 65535, 65535)
@@ -761,8 +749,9 @@ End
 Function DisplayParticleDensityByState(FolderName, folderPath)
 	String FolderName, folderPath
 	
-	NVAR/Z Dstate = root:Dstate
-	Variable maxState = NVAR_Exists(Dstate) ? Dstate : 0
+	NVAR cHMM = root:cHMM
+	NVAR Dstate = root:Dstate
+	Variable maxState = cHMM ? Dstate : 0
 	
 	Wave/Z ParticleDensity_Dstate = $(folderPath + "ParticleDensity_Dstate")
 	if(!WaveExists(ParticleDensity_Dstate))
@@ -1558,7 +1547,7 @@ Function FitIntensityGauss_Safe(SampleName, numOligomers, [fixParams, basePath, 
 						for(i = 0; i < numFitPts; i += 1)
 							xVal = FitX[i]
 							// n: mean = n*m, sd = sqrt(n)*s
-							CompWave[i] = Aolig * exp(-((xVal - olig*m_val)^2 / (2 * (olig*s_val)^2)))
+							CompWave[i] = Aolig * exp(-((xVal - olig*m_val)^2 / (2 * olig*s_val^2)))
 						endfor
 					endfor
 				endif
@@ -1607,14 +1596,14 @@ Function EvaluateSumGauss(coef, x, numOligomers)
 		m = coef[2]
 		s = coef[3]
 		result += coef[0] * exp(-((x - m)^2 / (2 * s^2)))
-		result += coef[1] * exp(-((x - 2*m)^2 / (2 * (2*s)^2)))
+		result += coef[1] * exp(-((x - 2*m)^2 / (2 * 2*s^2)))
 	else
 		// 3: m = coef[numOligomers], s = coef[numOligomers+1]
 		m = coef[numOligomers]
 		s = coef[numOligomers + 1]
 		for(i = 0; i < numOligomers; i += 1)
 			Variable n = i + 1  // 
-			result += coef[i] * exp(-((x - n*m)^2 / (2 * (n*s)^2)))
+			result += coef[i] * exp(-((x - n*m)^2 / (2 * n*s^2)))
 		endfor
 	endif
 	
@@ -1627,7 +1616,7 @@ Function SafeFitIntensity(histWave, xWave, coefWave, fitFunc, holdStr)
 	
 	Variable V_FitError = 0
 	Variable maxRetries = 3
-	Variable retry
+	Variable retry, hIdx
 	
 	// 
 	if(exists(fitFunc) != 6)
@@ -1669,6 +1658,12 @@ Function SafeFitIntensity(histWave, xWave, coefWave, fitFunc, holdStr)
 		// 
 		if(retry < maxRetries - 1)
 			coefWave = originalCoef * (0.8 + enoise(0.4))
+			// holdStr: 
+			for(hIdx = 0; hIdx < strlen(holdStr); hIdx += 1)
+				if(CmpStr(holdStr[hIdx], "1") == 0)
+					coefWave[hIdx] = originalCoef[hIdx]
+				endif
+			endfor
 		endif
 	endfor
 	
@@ -1886,15 +1881,18 @@ End
 // -----------------------------------------------------------------------------
 // Sum Log-Normal 
 // -----------------------------------------------------------------------------
+// v5.4.1: LogHistGauss — 対数ヒストグラム + ガウスフィット
+// 対数ヒストグラム（既に log10 空間）にガウスフィット
+// k-mer: center = m + log10(k), SD = s/sqrt(k)
 Function FitIntensityLogNorm_Safe(SampleName, numOligomers)
 	String SampleName
 	Variable numOligomers
 	
 	Variable numFolders = CountDataFolders(SampleName)
-	Variable m
+	Variable m_cell
 	String FolderName
 	
-	Variable fitResult, i, j, meanIdx, peakX, sdIdx
+	Variable fitResult, i, j, meanIdx, sdIdx
 	String fitFunc
 	CreateResultsFolder(SampleName)
 	SetDataFolder root:$(SampleName):Results
@@ -1909,8 +1907,8 @@ Function FitIntensityLogNorm_Safe(SampleName, numOligomers)
 	Variable successCount = 0
 	Variable failCount = 0
 	
-	for(m = 0; m < numFolders; m += 1)
-		FolderName = SampleName + num2str(m + 1)
+	for(m_cell = 0; m_cell < numFolders; m_cell += 1)
+		FolderName = SampleName + num2str(m_cell + 1)
 		SetDataFolder root:$(SampleName):$(FolderName)
 		
 		Wave/Z IntHist, IntHist_x
@@ -1919,17 +1917,21 @@ Function FitIntensityLogNorm_Safe(SampleName, numOligomers)
 			continue
 		endif
 		
-		fitFunc = "SumLogNorm" + num2str(numOligomers)
+		// LogHistGauss 関数を使用（SumLogNorm の代替）
+		if(numOligomers <= 8)
+			fitFunc = "LogHistGauss" + num2str(numOligomers)
+		else
+			Printf "  Warning: LogHistGauss supports up to 8 oligomers. Using 8.\r"
+			fitFunc = "LogHistGauss8"
+		endif
 		
 		Make/O/D/N=(numParams) coef_IntLogNorm
 		
-		// 
-
+		// 振幅初期値
 		for(i = 0; i < numOligomers; i += 1)
 			coef_IntLogNorm[i] = 1.0 / numOligomers
 		endfor
 		
-
 		if(numOligomers == 1)
 			meanIdx = 1
 			sdIdx = 2
@@ -1938,34 +1940,64 @@ Function FitIntensityLogNorm_Safe(SampleName, numOligomers)
 			sdIdx = numOligomers + 1
 		endif
 		
-		// log-normal 
-		FindPeak/Q IntHist
-		peakX = V_PeakLoc > 0 ? V_PeakLoc : 1000
-		coef_IntLogNorm[meanIdx] = ln(peakX)  // log mean
-		coef_IntLogNorm[sdIdx] = 0.3  // log sd
+		// v5.4.1: 対数ヒストグラムから直接初期値推定
+		// IntHist_x は既に log10 空間
+		Variable nPts = numpnts(IntHist)
+		Variable sumW = 0, sumWX = 0, sumWX2 = 0
+		Variable xVal_init, wt_init, p_init
+		for(p_init = 0; p_init < nPts; p_init += 1)
+			xVal_init = IntHist_x[p_init]
+			wt_init = IntHist[p_init]
+			if(wt_init > 0)
+				sumW += wt_init
+				sumWX += wt_init * xVal_init
+				sumWX2 += wt_init * xVal_init^2
+			endif
+		endfor
+		
+		Variable initLogMean, initLogSD, logVar
+		if(sumW > 0)
+			initLogMean = sumWX / sumW
+			logVar = sumWX2 / sumW - initLogMean^2
+			initLogSD = logVar > 0 ? sqrt(logVar) : 0.15
+			// 妥当な範囲に制限（log10空間）
+			if(initLogSD < 0.05)
+				initLogSD = 0.05
+			endif
+			if(initLogSD > 1.0)
+				initLogSD = 1.0
+			endif
+		else
+			// フォールバック
+			NVAR MeanIntGauss = root:MeanIntGauss
+			initLogMean = log(MeanIntGauss)  // log10
+			initLogSD = 0.15
+		endif
+		
+		coef_IntLogNorm[meanIdx] = initLogMean
+		coef_IntLogNorm[sdIdx] = initLogSD
 		
 		fitResult = SafeFitIntensityLogNorm(IntHist, IntHist_x, coef_IntLogNorm, fitFunc)
 		
 		SetDataFolder root:$(SampleName):Results
 		
 		if(fitResult == 0)
-
 			for(j = 0; j < numParams; j += 1)
-				fit_IntLogNormParams[m][j] = coef_IntLogNorm[j]
+				fit_IntLogNormParams[m_cell][j] = coef_IntLogNorm[j]
 			endfor
 			NVAR V_chisq
-			fit_IntLogNormChiSq[m] = V_chisq
-			fit_IntLogNormSuccess[m] = 1
+			fit_IntLogNormChiSq[m_cell] = V_chisq
+			fit_IntLogNormSuccess[m_cell] = 1
 			successCount += 1
 		else
 			failCount += 1
 		endif
 		
-		ShowProgress(m+1, numFolders, "LogNorm")
+		ShowProgress(m_cell+1, numFolders, "LogHistGauss")
 	endfor
 	
 	EndProgress()
-	Printf "LogNorm:  %d,  %d\r", successCount, failCount
+	Printf "LogHistGauss: Success %d, Failed %d\r", successCount, failCount
 	
 	SetDataFolder root:
 	return successCount
@@ -1981,6 +2013,12 @@ static Function SafeFitIntensityLogNorm(histWave, xWave, coefWave, fitFunc)
 	
 	Variable err
 	Duplicate/FREE coefWave, originalCoef
+	
+	// v5.4.1: リトライ用変数
+	Variable numAmps = numpnts(coefWave) - 2
+	Variable meanIdx_r = numAmps
+	Variable sdIdx_r = numAmps + 1
+	Variable ri
 	
 	// Wave:  > 0
 	Variable numParams = numpnts(coefWave)
@@ -2007,7 +2045,17 @@ static Function SafeFitIntensityLogNorm(histWave, xWave, coefWave, fitFunc)
 		endtry
 		
 		if(retry < maxRetries - 1)
-			coefWave = originalCoef * (0.8 + enoise(0.4))
+			// v5.4.1: 振幅のみ摂動、mean/SD は初期値から段階的に変化
+			for(ri = 0; ri < numAmps; ri += 1)
+				coefWave[ri] = abs(originalCoef[ri] * (0.5 + enoise(0.5)))
+			endfor
+			// mean は初期値を維持、SD は段階的に変化
+			coefWave[meanIdx_r] = originalCoef[meanIdx_r]
+			if(retry == 0)
+				coefWave[sdIdx_r] = originalCoef[sdIdx_r] * 1.5  // より広い SD
+			else
+				coefWave[sdIdx_r] = originalCoef[sdIdx_r] * 0.7  // より狭い SD
+			endif
 		endif
 	endfor
 	
@@ -3234,7 +3282,7 @@ Function GlobalFitIntensityShared(SampleName, FolderName, numOligomers, maxState
 	NVAR IhistDim = root:IhistDim
 	NVAR MeanIntGauss = root:MeanIntGauss
 	NVAR SDIntGauss = root:SDIntGauss
-	NVAR/Z SDIntLognorm = root:SDIntLognorm
+	NVAR SDIntLognorm = root:SDIntLognorm
 	
 	// 
 	NVAR/Z LogIntensityScale = LogIntensityScale
@@ -3244,19 +3292,18 @@ Function GlobalFitIntensityShared(SampleName, FolderName, numOligomers, maxState
 	
 	Variable isLogScale = 0
 	Variable histBin, histDim, histMin, initMean, initSD
+	Variable si2, areaSum, normArea, totalAreaSum, ai  // v5.4.1: population calculation variables
+	Variable adaptSumW, adaptSumWX, adaptSumWX2, adaptXval, adaptWt  // v5.4.3: adaptive init
+	Variable adaptMean, adaptVar, adaptSD, pi_init, peakHeight  // v5.4.3
 	
 	if(NVAR_Exists(LogIntensityScale) && LogIntensityScale == 1)
 		isLogScale = 1
 		histBin = LogIntBin
 		histMin = LogIntMin
-		// log10
-		initMean = log(MeanIntGauss)  // : MeanIntGauss=500 → log10(500)≈2.7
-		// SDIntLognorm0.2
-		if(NVAR_Exists(SDIntLognorm))
-			initSD = SDIntLognorm
-		else
-			initSD = 0.2
-		endif
+		// v5.4.3: 初期値はヒストグラムデータから推定（後で計算）
+		initMean = log(MeanIntGauss)  // フォールバック値
+		initSD = SDIntLognorm
+		Printf "  [v5.4.4] LogScale=ON, histBin=%.4f, histMin=%.4f\r", histBin, histMin
 	else
 		histBin = IhistBin
 		histMin = 0
@@ -3325,12 +3372,59 @@ Function GlobalFitIntensityShared(SampleName, FolderName, numOligomers, maxState
 	Variable numParams = numAmplitudes + 2
 	Make/O/D/N=(numParams) GlobalCoef
 	
-	// 
+	// 初期値
 	for(i = 0; i < numAmplitudes; i += 1)
 		GlobalCoef[i] = 0.01
 	endfor
 	GlobalCoef[numAmplitudes] = initMean
 	GlobalCoef[numAmplitudes + 1] = initSD
+	
+	// v5.4.3: LogScale 時、ヒストグラムデータから適応的に初期値推定
+	if(isLogScale)
+		adaptSumW = 0
+		adaptSumWX = 0
+		adaptSumWX2 = 0
+		// S0 のデータのみ使用（最初の histDim 点）
+		for(pi_init = 0; pi_init < histDim; pi_init += 1)
+			adaptXval = ConcatX[pi_init]  // segIdx=0 なので offset なし
+			adaptWt = ConcatHist[pi_init]
+			if(adaptWt > 0)
+				adaptSumW += adaptWt
+				adaptSumWX += adaptWt * adaptXval
+				adaptSumWX2 += adaptWt * adaptXval^2
+			endif
+		endfor
+		
+		if(adaptSumW > 0)
+			adaptMean = adaptSumWX / adaptSumW
+			adaptVar = adaptSumWX2 / adaptSumW - adaptMean^2
+			adaptSD = adaptVar > 0 ? sqrt(adaptVar) : 0.15
+			// 妥当な範囲に制限（log10 空間）
+			if(adaptSD < 0.05)
+				adaptSD = 0.05
+			endif
+			if(adaptSD > 1.0)
+				adaptSD = 1.0
+			endif
+			
+			GlobalCoef[numAmplitudes] = adaptMean
+			GlobalCoef[numAmplitudes + 1] = adaptSD
+			Printf "  Adaptive init (log10): mean=%.4f, SD=%.4f\r", adaptMean, adaptSD
+		endif
+		
+		// 振幅初期値: S0 ヒストグラムのピーク高さから推定
+		peakHeight = 0
+		for(pi_init = 0; pi_init < histDim; pi_init += 1)
+			if(ConcatHist[pi_init] > peakHeight)
+				peakHeight = ConcatHist[pi_init]
+			endif
+		endfor
+		if(peakHeight > 0)
+			for(i = 0; i < numAmplitudes; i += 1)
+				GlobalCoef[i] = peakHeight / numOligomers * 0.5
+			endfor
+		endif
+	endif
 	
 	// 
 	Variable numConstraints = numAmplitudes + 2  //  > 0 + mean/sd ()
@@ -3391,12 +3485,21 @@ Function GlobalFitIntensityShared(SampleName, FolderName, numOligomers, maxState
 	endtry
 	
 	if(!fitSuccess)
-		// 
-		for(i = 0; i < numAmplitudes; i += 1)
-			GlobalCoef[i] = 0.005 + enoise(0.01)
-		endfor
-		GlobalCoef[numAmplitudes] = initMean
-		GlobalCoef[numAmplitudes + 1] = initSD
+		// v5.4.3: リトライ — 振幅のみ摂動、mean/SD は適応初期値を維持
+		if(isLogScale && adaptSumW > 0)
+			// LogScale: adaptive 初期値ベースでリトライ
+			for(i = 0; i < numAmplitudes; i += 1)
+				GlobalCoef[i] = abs(peakHeight / numOligomers * (0.3 + enoise(0.3)))
+			endfor
+			GlobalCoef[numAmplitudes] = adaptMean
+			GlobalCoef[numAmplitudes + 1] = adaptSD * 1.3  // やや広めの SD
+		else
+			for(i = 0; i < numAmplitudes; i += 1)
+				GlobalCoef[i] = 0.005 + enoise(0.01)
+			endfor
+			GlobalCoef[numAmplitudes] = initMean
+			GlobalCoef[numAmplitudes + 1] = initSD
+		endif
 		
 		try
 			AbortOnRTE
@@ -3474,13 +3577,13 @@ Function GlobalFitIntensityShared(SampleName, FolderName, numOligomers, maxState
 				Variable meanVal, sdVal
 				
 				if(isLogScale)
-					// :  = mean + log10(n), SD = 
+					// LogHist+Gauss: center = mean + log10(n), SD = sd/sqrt(n) (v5.4.4)
 					meanVal = finalMean + log(oligSize)
-					sdVal = finalSD
+					sdVal = finalSD / sqrt(oligSize)
 				else
-					// :  = n×mean, SD = n×sd
+					// :  = n×mean, SD = sqrt(n)×sd
 					meanVal = oligSize * finalMean
-					sdVal = oligSize * finalSD
+					sdVal = sqrt(oligSize) * finalSD
 				endif
 				
 				Variable compVal = GlobalCoef[ampIdx] * exp(-((xVal - meanVal)^2 / (2 * sdVal^2)))
@@ -3506,10 +3609,10 @@ Function GlobalFitIntensityShared(SampleName, FolderName, numOligomers, maxState
 				
 				if(isLogScale)
 					meanValRSS = finalMean + log(oligSizeRSS)
-					sdValRSS = finalSD
+					sdValRSS = finalSD / sqrt(oligSizeRSS)  // v5.4.1: LogHistGauss SD
 				else
 					meanValRSS = oligSizeRSS * finalMean
-					sdValRSS = oligSizeRSS * finalSD
+					sdValRSS = sqrt(oligSizeRSS) * finalSD
 				endif
 				
 				fitValData += GlobalCoef[ampIdxRSS] * exp(-((xData - meanValRSS)^2 / (2 * sdValRSS^2)))
@@ -3525,9 +3628,15 @@ Function GlobalFitIntensityShared(SampleName, FolderName, numOligomers, maxState
 		Wave CoefWave = $coefName
 		
 		Variable ampSum = 0
+		areaSum = 0  // v5.4.1: area-based for LogHistGauss
 		for(i = 0; i < numOligomers; i += 1)
 			CoefWave[i] = GlobalCoef[segIdx * numOligomers + i]
 			ampSum += CoefWave[i]
+			if(isLogScale)
+				areaSum += CoefWave[i] / sqrt(i + 1)  // area ∝ A_k × (s/√k)
+			else
+				areaSum += CoefWave[i] * sqrt(i + 1)  // area ∝ A_k × (√k × σ)
+			endif
 		endfor
 		CoefWave[numOligomers] = finalMean
 		CoefWave[numOligomers + 1] = finalSD
@@ -3537,18 +3646,34 @@ Function GlobalFitIntensityShared(SampleName, FolderName, numOligomers, maxState
 		Make/O/D/N=(numOligomers) $popName
 		Wave PopWave = $popName
 		
-		// Norm by total number: 
-		// : 100%
-		Variable normDenominator
+		// v5.4.1: Area-based population fraction
+		// LogHistGauss: area_k = A_k × (s/√k) → fraction = (A_k/√k) / Σ(A_j/√j)
+		// SumGauss: area_k = A_k × (√k × σ) → fraction = (A_k×√k) / Σ(A_j×√j)
+		totalAreaSum = 0
 		if(useNormByTotal == 1 && totalAmpSum > 0)
-			normDenominator = totalAmpSum
+			// S0total
+			for(si2 = 0; si2 < validStates; si2 += 1)
+				for(i = 0; i < numOligomers; i += 1)
+					ai = GlobalCoef[si2 * numOligomers + i]
+					if(isLogScale)
+						totalAreaSum += ai / sqrt(i + 1)
+					else
+						totalAreaSum += ai * sqrt(i + 1)
+					endif
+				endfor
+			endfor
+			normArea = totalAreaSum
 		else
-			normDenominator = ampSum
+			normArea = areaSum
 		endif
 		
-		if(normDenominator > 0)
+		if(normArea > 0)
 			for(i = 0; i < numOligomers; i += 1)
-				PopWave[i] = CoefWave[i] / normDenominator
+				if(isLogScale)
+					PopWave[i] = (CoefWave[i] / sqrt(i + 1)) / normArea
+				else
+					PopWave[i] = (CoefWave[i] * sqrt(i + 1)) / normArea
+				endif
 			endfor
 		endif
 		
@@ -3623,13 +3748,13 @@ Function GlobalSumGaussFit(w, x) : FitFunc
 		Variable m, s
 		
 		if(isLogScale)
-			// :  = mean + log10(n), SD = 
+			// LogHist+Gauss: center = mean + log10(n), SD = sd/sqrt(n) (v5.4.1)
 			m = mean + log(oligSize)  // log() in Igor is log10
-			s = sd
+			s = sd / sqrt(oligSize)
 		else
-			// :  = n×mean, SD = n×sd
+			// :  = n×mean, SD = sqrt(n)×sd
 			m = oligSize * mean
-			s = oligSize * sd
+			s = sqrt(oligSize) * sd
 		endif
 		
 		result += w[ampStart + i] * exp(-((realX - m)^2 / (2 * s^2)))
@@ -4211,17 +4336,10 @@ Function CollectIntDensHistToMatrix(SampleName, maxState, [basePath])
 		basePath = "root"
 	endif
 	
-	NVAR/Z IHistDim = root:IhistDim
-	NVAR/Z IHistBin = root:IhistBin
-	
-	Variable histDim = 100
-	Variable histBin = 1000
-	if(NVAR_Exists(IHistDim))
-		histDim = IHistDim
-	endif
-	if(NVAR_Exists(IHistBin))
-		histBin = IHistBin
-	endif
+	NVAR IHistDim = root:IhistDim
+	NVAR IHistBin = root:IhistBin
+	Variable histDim = IHistDim
+	Variable histBin = IHistBin
 	
 	Variable numFolders
 	if(StringMatch(basePath, "root"))
@@ -4489,8 +4607,11 @@ Function CalculateOligomerDensity(SampleName, [basePath, waveSuffix])
 	Variable m, n, s, i
 	String FolderName, folderPath
 	Variable maxState = 0
-	Variable numOligomers = MaxOligomerSize - MinOligomerSize + 1
-	
+	// Oligomer sizes are always 1, 2, ..., MaxOligomerSize (monomer, dimer, ...)
+	// MinOligomerSize/MaxOligomerSize define the AIC model selection range,
+	// but the output array spans 1 to MaxOligomerSize
+	Variable numOligomers = MaxOligomerSize
+
 	// samplePath
 	String samplePath
 	if(StringMatch(basePath, "root"))
@@ -4504,7 +4625,7 @@ Function CalculateOligomerDensity(SampleName, [basePath, waveSuffix])
 	endif
 	
 	Print "=== Oligomer Density Calculation ==="
-	Printf "Oligomer range: %d-%d, Dstates: %d\r", MinOligomerSize, MaxOligomerSize, maxState
+	Printf "Oligomer range: 1-%d (AIC test: %d-%d), Dstates: %d\r", MaxOligomerSize, MinOligomerSize, MaxOligomerSize, maxState
 	
 	// ========================================
 	// Step 1: ParticleDensity_Dstate
@@ -4574,11 +4695,11 @@ Function CalculateOligomerDensity(SampleName, [basePath, waveSuffix])
 		Make/O/N=(maxState+1) $(folderPath + "MolDensity_Dstate" + waveSuffix) = 0
 		Wave MolDensity_Dstate = $(folderPath + "MolDensity_Dstate" + waveSuffix)
 		
-		// wave
+		// Oligomer size wave: 1, 2, 3, ..., MaxOligomerSize (monomer, dimer, ...)
 		Make/O/N=(numOligomers) $(folderPath + "OligomerSize") = 0
 		Wave OligomerSize = $(folderPath + "OligomerSize")
 		for(n = 0; n < numOligomers; n += 1)
-			OligomerSize[n] = MinOligomerSize + n
+			OligomerSize[n] = n + 1
 		endfor
 		
 		// Dstate
@@ -4636,11 +4757,9 @@ Function CalculateOligomerDensity(SampleName, [basePath, waveSuffix])
 							endif
 						endif
 					else
-						// 
-						Make/O/N=(numOligomers) $(folderPath + osizeName) = 0
-						Wave OsizeWave = $(folderPath + osizeName)
-						SetScale/P x, 1, 1, OsizeWave
-						OsizeWave[0] = 1.0
+						// No pop_pct or coef_Int data — skip oligomer density for this state
+						Printf "WARNING: No oligomer data (pop_pct/coef_Int) for state S%d in %s. Skipping oligomer density.\r", s, FolderName
+						continue
 					endif
 				endif
 			endif
@@ -4656,7 +4775,7 @@ Function CalculateOligomerDensity(SampleName, [basePath, waveSuffix])
 				Variable osizePoints = numpnts(OsizeWave)
 				Variable maxIdx = min(numOligomers, osizePoints)
 				for(n = 0; n < maxIdx; n += 1)
-					Variable oligSize = MinOligomerSize + n
+					Variable oligSize = n + 1  // 1=monomer, 2=dimer, ...
 					// Molecular density distribution = particleDensity × pop_osize × oligomerSize
 					MolDensDist[n] = particleDens * OsizeWave[n] * oligSize
 					totalMolDens += MolDensDist[n]
@@ -4819,8 +4938,8 @@ Function CollectMolDensityToMatrixEx(SampleName, maxState, basePath, waveSuffix)
 		NewDataFolder $resultsPath
 	endif
 	
-	NVAR/Z NumOligomers = root:MaxOligomerSize
-	Variable numOlig = NVAR_Exists(NumOligomers) ? NumOligomers : 10
+	NVAR NumOligomers = root:MaxOligomerSize
+	Variable numOlig = NumOligomers
 	
 	// === MolDensity_Dstate ===
 	// Matrix wavesuffix- Total
@@ -5040,7 +5159,7 @@ Function DisplayOligomerDensity(SampleName, [basePath, waveSuffix])
 	
 	Variable m, n, s
 	String FolderName, folderPath, resultsPath
-	Variable numOligomers = MaxOligomerSize - MinOligomerSize + 1
+	Variable numOligomers = MaxOligomerSize  // 1 to MaxOligomerSize
 	Variable maxState = 0
 	
 	// samplePath
@@ -5118,7 +5237,7 @@ Function DisplayOligomerDensity(SampleName, [basePath, waveSuffix])
 			Label left "Particle Fraction"
 			Label bottom "Oligomer Size"
 			SetAxis left 0, *
-			SetAxis bottom MinOligomerSize - 0.5, MaxOligomerSize + 0.5
+			SetAxis bottom 0.5, MaxOligomerSize + 0.5
 			ModifyGraph width={Aspect, 1.618}
 			
 			// Seg
@@ -5171,7 +5290,7 @@ Function DisplayOligomerDensity(SampleName, [basePath, waveSuffix])
 			Label left "Molecular Density (/µm\\S2\\M)"
 			Label bottom "Oligomer Size"
 			SetAxis left 0, *
-			SetAxis bottom MinOligomerSize - 0.5, MaxOligomerSize + 0.5
+			SetAxis bottom 0.5, MaxOligomerSize + 0.5
 			ModifyGraph width={Aspect, 1.618}
 			
 			// Seg

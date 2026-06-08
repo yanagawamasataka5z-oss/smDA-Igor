@@ -24,7 +24,8 @@
 //  11. SMI_Layout.ipf       - 
 //  12. SMI_Colocalization.ipf - 
 //  13. SMI_Segmentation.ipf - 
-//  14. SMI_Main.ipf         - 
+//  14. (removed from public release)
+//  15. SMI_Main.ipf         - 
 //
 // SMI_Initialize() 
 // =============================================================================

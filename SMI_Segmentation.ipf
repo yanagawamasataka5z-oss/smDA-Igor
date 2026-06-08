@@ -402,8 +402,8 @@ Function RunSegmentAutoAnalysis(sampleName, basePath, waveSuffix)
 	if(NVAR_Exists(cMSD) && cMSD == 1)
 		Printf "    MSD Analysis...\r"
 		CalculateMSD(sampleName, basePath=basePath, waveSuffix=waveSuffix)
-		NVAR/Z cFitType = root:cFitType
-		Variable fitTypeVal = NVAR_Exists(cFitType) ? cFitType : 1
+		NVAR cFitType = root:cFitType
+		Variable fitTypeVal = cFitType
 		FitMSD_Safe(sampleName, fitTypeVal, basePath=basePath, waveSuffix=waveSuffix)
 		DisplayMSDGraphHMM(sampleName, basePath=basePath, waveSuffix=waveSuffix)
 	endif
@@ -413,8 +413,8 @@ Function RunSegmentAutoAnalysis(sampleName, basePath, waveSuffix)
 	if(!NVAR_Exists(cStepSize) || cStepSize == 1)
 		CalculateStepSizeHistogramHMM(sampleName, basePath=basePath, waveSuffix=waveSuffix)
 		DisplayStepSizeHistogramHMM(sampleName, basePath=basePath, waveSuffix=waveSuffix)
-		NVAR/Z gDstate = root:Dstate
-		Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+		NVAR gDstate = root:Dstate
+		Variable Dstate = gDstate
 		FitStepSizeDistributionHMM(sampleName, Dstate, basePath=basePath, waveSuffix=waveSuffix)
 	endif
 	
@@ -510,8 +510,8 @@ Function CompareSegmentHMMP(sampleName, maxSeg)
 	String sampleName
 	Variable maxSeg
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	Variable numGroups = 1 + maxSeg + 1
 	Variable segIdx, stt
@@ -584,8 +584,8 @@ Function CompareSegmentIntensity(sampleName, maxSeg)
 	String sampleName
 	Variable maxSeg
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	Variable numGroups = 1 + maxSeg + 1
 	Variable segIdx, stt
@@ -670,8 +670,8 @@ Function CompareSegmentOntime(sampleName, maxSeg)
 	String sampleName
 	Variable maxSeg
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	Variable numGroups = 1 + maxSeg + 1
 	Variable segIdx, stt
@@ -808,8 +808,8 @@ Function CompareSegmentOnrate(sampleName, maxSeg)
 	String sampleName
 	Variable maxSeg
 	
-	NVAR/Z gDstate = root:Dstate
-	Variable Dstate = NVAR_Exists(gDstate) ? gDstate : 3
+	NVAR gDstate = root:Dstate
+	Variable Dstate = gDstate
 	
 	Variable numGroups = 1 + maxSeg + 1
 	Variable segIdx, stt

@@ -267,7 +267,11 @@ Function StatResultMatrix_Gcount(SampleName)
             Make/O/D/N=(RowSize, ColumnSize) SEM = NaN
             Make/O/D/N=(RowSize, ColumnSize) Npnts = NaN
             
-            ImageTransform/METH=1 averageImage MWave
+            if(WaveDims(MWave) >= 3)
+                ImageTransform/METH=1 averageImage MWave
+            else
+                Printf "  WARNING: ImageTransform skipped in CollectAndAverage — %s is %dD (LayerSize=%d)\r", MName, WaveDims(MWave), LayerSize
+            endif
             Wave/Z M_AveImage, M_StdvImage
             
             If(WaveExists(M_AveImage) && WaveExists(M_StdvImage))
@@ -308,17 +312,17 @@ Function RunAllWithStatistics(SampleName)
     // 
     NVAR/Z cAAS4 = root:cAAS4
     NVAR/Z cHMM = root:cHMM
-    NVAR/Z Dstate = root:Dstate
-    NVAR/Z maxOlig = root:MaxOligomerSize
-    NVAR/Z fitType = root:AreaRangeMSD
-    NVAR/Z maxExp = root:AreaExpMax_off
-    
+    NVAR Dstate = root:Dstate
+    NVAR maxOlig = root:MaxOligomerSize
+    NVAR fitType = root:FitType
+    NVAR maxExp = root:ExpMax_off
+
     Variable isAAS4 = NVAR_Exists(cAAS4) ? cAAS4 : 1
     Variable isHMM = NVAR_Exists(cHMM) ? cHMM : 1
-    Variable dstateVal = NVAR_Exists(Dstate) ? Dstate : 4
-    Variable maxOligVal = NVAR_Exists(maxOlig) ? maxOlig : 4
-    Variable fitTypeVal = NVAR_Exists(fitType) ? fitType : 1
-    Variable maxExpVal = NVAR_Exists(maxExp) ? maxExp : 3
+    Variable dstateVal = Dstate
+    Variable maxOligVal = maxOlig
+    Variable fitTypeVal = fitType
+    Variable maxExpVal = maxExp
     
     String formatStr = ""
     If(isAAS4)
@@ -516,7 +520,7 @@ Function StatMatrixWave(SampleName, matrixName)
 	SetDataFolder root:$(SampleName):Results
 	
 	if(LayerSize == 0)
-		// 2Wave
+		// 2D Wave
 		Make/O/D/N=(RowSize) Average = NaN, SD = NaN, SEM = NaN, Npnts = NaN
 		for(i = 0; i < RowSize; i += 1)
 			ImageStats/G={i, i, 0, ColumnSize-1} MWave
@@ -527,10 +531,21 @@ Function StatMatrixWave(SampleName, matrixName)
 			endif
 			Npnts[i] = V_npnts
 		endfor
-	else
-		// 3Wave
+	elseif(LayerSize == 1)
+		// 3D Wave with single cell: mean = the value itself, SD/SEM = NaN (undefined for n=1)
 		Make/O/D/N=(RowSize, ColumnSize) Average = NaN, SD = NaN, SEM = NaN, Npnts = NaN
-		ImageTransform/METH=1 averageImage MWave
+		Average[][] = MWave[p][q][0]
+		SD[][] = NaN
+		SEM[][] = NaN
+		Npnts[][] = 1
+	elseif(LayerSize > 1)
+		// 3D Wave: average across layers
+		Make/O/D/N=(RowSize, ColumnSize) Average = NaN, SD = NaN, SEM = NaN, Npnts = NaN
+		if(WaveDims(MWave) >= 3)
+			ImageTransform/METH=1 averageImage MWave
+		else
+			Printf "  WARNING: ImageTransform skipped in StatMatrixWave — %s is %dD (LayerSize=%d)\r", matrixName, WaveDims(MWave), LayerSize
+		endif
 		Wave/Z M_AveImage, M_StdvImage
 		if(WaveExists(M_AveImage) && WaveExists(M_StdvImage))
 			Average[][] = M_AveImage[p][q]
@@ -1669,81 +1684,230 @@ End
 // 2*
 // Y2(mean + SEM) + yRange*5%
 // -----------------------------------------------------------------------------
+// =============================================================================
+// Significance Bracket Drawing System (Prism-style)
+// Uses DrawLine/DrawText in axis coordinates for resize-robust display
+// =============================================================================
+
+// Clear all significance annotations (old TextBoxes + DrawLayer)
+Function ClearSignificanceAnnotations(targetGraph)
+	String targetGraph
+	
+	DoWindow $targetGraph
+	if(V_flag == 0)
+		return -1
+	endif
+	
+	// Remove old TextBox annotations
+	Variable i
+	for(i = 0; i < 50; i += 1)
+		TextBox/W=$targetGraph/K/N=$("sigText" + num2str(i))
+	endfor
+	
+	// Clear UserFront draw layer
+	SetDrawLayer/W=$targetGraph UserFront
+	DrawAction/W=$targetGraph delete
+End
+
+// Core: Draw Prism-style significance brackets on a bar chart
+// pVals[]: adjusted p-values for each comparison
+// g1[]/g2[]: category indices (0-based) for each comparison pair
+// numGroups: total number of categories
+Function DrawSignificanceBrackets(targetGraph, pVals, g1, g2, numGroups)
+	String targetGraph
+	Wave pVals, g1, g2
+	Variable numGroups
+	
+	Variable numComp = numpnts(pVals)
+	if(numComp == 0)
+		return 0
+	endif
+	
+	// Clear previous annotations
+	ClearSignificanceAnnotations(targetGraph)
+	DoUpdate/W=$targetGraph
+	
+	// Get bar tops (mean + SEM) for each group
+	Make/FREE/N=(numGroups) barTops = 0
+	Variable numBarTops = GetBarTopsFromGraph(targetGraph, barTops)
+	Variable nGrp, ii
+	if(numBarTops == 0)
+		Make/FREE/T/N=20 wvN, grN
+		nGrp = GetCellDataWaveNames(targetGraph, wvN, grN)
+		for(ii = 0; ii < min(nGrp, numGroups); ii += 1)
+			barTops[ii] = GetGroupBarTop(wvN, ii)
+		endfor
+	endif
+	
+	// Global max bar top
+	Variable globalMax = 0
+	for(ii = 0; ii < numGroups; ii += 1)
+		if(numtype(barTops[ii]) == 0 && barTops[ii] > globalMax)
+			globalMax = barTops[ii]
+		endif
+	endfor
+	if(globalMax <= 0)
+		GetAxis/Q/W=$targetGraph left
+		globalMax = V_max * 0.6
+	endif
+	
+	// Read bracket parameters from globals (user-adjustable in Statistics tab)
+	NVAR/Z gXOffset = root:StatBracket_XOffset
+	NVAR/Z gTextGap = root:StatBracket_TextGap
+	NVAR/Z gStartY = root:StatBracket_StartY
+	NVAR/Z gStepY = root:StatBracket_StepY
+	NVAR/Z gTickH = root:StatBracket_TickH
+	
+	Variable xOffset = NVAR_Exists(gXOffset) ? gXOffset : 0.5
+	Variable tickH = globalMax * (NVAR_Exists(gTickH) ? gTickH : 0.05)
+	Variable stepY = globalMax * (NVAR_Exists(gStepY) ? gStepY : 0.12)
+	Variable textGap = globalMax * (NVAR_Exists(gTextGap) ? gTextGap : 0.11)
+	Variable startY = globalMax * (NVAR_Exists(gStartY) ? gStartY : 1.15)
+	
+	// Collect significant pairs
+	Make/FREE/N=(numComp) sigPVal = NaN, sigG1 = NaN, sigG2 = NaN, sigSpan = NaN
+	Variable nSig = 0
+	for(ii = 0; ii < numComp; ii += 1)
+		if(numtype(pVals[ii]) == 0 && pVals[ii] < 0.05)
+			sigPVal[nSig] = pVals[ii]
+			sigG1[nSig] = g1[ii]
+			sigG2[nSig] = g2[ii]
+			sigSpan[nSig] = abs(g2[ii] - g1[ii])
+			nSig += 1
+		endif
+	endfor
+	
+	if(nSig == 0)
+		return 0
+	endif
+	Redimension/N=(nSig) sigPVal, sigG1, sigG2, sigSpan
+	
+	// Sort by span (narrow pairs first — they go lowest)
+	Sort sigSpan, sigSpan, sigPVal, sigG1, sigG2
+	
+	// Assign Y levels: avoid overlap
+	Make/FREE/N=(nSig) bracketY = NaN
+	Make/FREE/N=(nSig) occX1 = NaN, occX2 = NaN, occY = NaN
+	Variable nPlaced = 0
+	
+	Variable kk, pp, x1k, x2k, candidateY, overlap
+	Variable spanMax, ss, settled, maxIter, iter
+	for(kk = 0; kk < nSig; kk += 1)
+		x1k = min(sigG1[kk], sigG2[kk])
+		x2k = max(sigG1[kk], sigG2[kk])
+		
+		// Minimum Y: above the tallest bar in the span
+		spanMax = 0
+		for(ss = x1k; ss <= x2k; ss += 1)
+			if(ss < numGroups && numtype(barTops[ss]) == 0 && barTops[ss] > spanMax)
+				spanMax = barTops[ss]
+			endif
+		endfor
+		candidateY = max(spanMax + stepY, startY)
+		
+		// Check against already placed brackets for overlap
+		settled = 0
+		maxIter = 50
+		iter = 0
+		do
+			overlap = 0
+			for(pp = 0; pp < nPlaced; pp += 1)
+				// Check: do X ranges overlap AND Y is too close?
+				if(x1k <= occX2[pp] && x2k >= occX1[pp])
+					// X overlap exists — check Y proximity
+					if(abs(candidateY - occY[pp]) < stepY * 0.9)
+						candidateY = occY[pp] + stepY
+						overlap = 1
+						break
+					endif
+				endif
+			endfor
+			iter += 1
+			if(overlap == 0 || iter >= maxIter)
+				settled = 1
+			endif
+		while(!settled)
+		
+		bracketY[kk] = candidateY
+		occX1[nPlaced] = x1k
+		occX2[nPlaced] = x2k
+		occY[nPlaced] = candidateY
+		nPlaced += 1
+	endfor
+	
+	// Find maximum bracket Y for axis extension
+	Variable maxBracketY = 0
+	for(kk = 0; kk < nSig; kk += 1)
+		if(bracketY[kk] > maxBracketY)
+			maxBracketY = bracketY[kk]
+		endif
+	endfor
+	
+	// Draw brackets
+	SetDrawLayer/W=$targetGraph UserFront
+	
+	Variable yH, yTick, xMid
+	Variable x1draw, x2draw  // draw coordinates with offset
+	String sigStr
+	for(kk = 0; kk < nSig; kk += 1)
+		x1k = min(sigG1[kk], sigG2[kk])
+		x2k = max(sigG1[kk], sigG2[kk])
+		x1draw = x1k + xOffset
+		x2draw = x2k + xOffset
+		yH = bracketY[kk]       // horizontal line Y
+		yTick = yH - tickH      // bottom of ticks
+		xMid = (x1draw + x2draw) / 2.0
+		
+		// Significance text
+		sigStr = ""
+		if(sigPVal[kk] < 0.001)
+			sigStr = "***"
+		elseif(sigPVal[kk] < 0.01)
+			sigStr = "**"
+		else
+			sigStr = "*"
+		endif
+		
+		// Left tick (vertical)
+		SetDrawEnv/W=$targetGraph xcoord=bottom, ycoord=left, linethick=1
+		DrawLine/W=$targetGraph x1draw, yTick, x1draw, yH
+		
+		// Horizontal line
+		SetDrawEnv/W=$targetGraph xcoord=bottom, ycoord=left, linethick=1
+		DrawLine/W=$targetGraph x1draw, yH, x2draw, yH
+		
+		// Right tick (vertical)
+		SetDrawEnv/W=$targetGraph xcoord=bottom, ycoord=left, linethick=1
+		DrawLine/W=$targetGraph x2draw, yH, x2draw, yTick
+		
+		// Text: centered above horizontal line
+		SetDrawEnv/W=$targetGraph xcoord=bottom, ycoord=left
+		SetDrawEnv/W=$targetGraph fname="Arial", fsize=14, fstyle=1
+		SetDrawEnv/W=$targetGraph textxjust=1, textyjust=2  // center horiz, bottom justify
+		DrawText/W=$targetGraph xMid, yH + textGap, sigStr
+	endfor
+	
+	// Extend Y axis to accommodate brackets + text
+	SetAxis/W=$targetGraph left 0, maxBracketY + stepY
+	
+	return nSig
+End
+
+// =============================================================================
+// Wrapper functions (called from test routines)
+// =============================================================================
+
+// 2-group: t-test bracket
 Function AddTTestSignificanceToGraph(targetGraph, pVal)
 	String targetGraph
 	Variable pVal
 	
-	// 
-	String sigMark = ""
-	if(pVal < 0.001)
-		sigMark = "***"
-	elseif(pVal < 0.01)
-		sigMark = "**"
-	elseif(pVal < 0.05)
-		sigMark = "*"
-	else
-		return 0  // 
+	if(pVal >= 0.05)
+		return 0
 	endif
 	
-	// TextBox
-	TextBox/W=$targetGraph/K/N=sigText0
-	
-	// 201
-	// catGap=0.5-0.51.5
-	Variable xAxisMin = -0.5
-	Variable xAxisMax = 1.5
-	Variable xAxisRange = 2.0  // = numGroups
-	
-	// Y
-	GetAxis/Q/W=$targetGraph left
-	Variable yAxisMin = V_min
-	Variable yAxisMax = V_max
-	Variable yAxisRange = yAxisMax - yAxisMin
-	
-	// 
-	if(yAxisRange <= 0 || numtype(yAxisRange) != 0)
-		Print "Error: Invalid Y axis range"
-		return -1
-	endif
-	
-	// (mean + SEM)
-	Make/FREE/N=(2) barTopsLocal
-	barTopsLocal = 0
-	Variable numBarTops = GetBarTopsFromGraph(targetGraph, barTopsLocal)
-	
-	// 
-	Variable maxBarTop = 0
-	if(numBarTops == 0)
-		Make/FREE/T/N=20 waveNamesLocal, groupNamesLocal
-		Variable numGroupsLocal = GetCellDataWaveNames(targetGraph, waveNamesLocal, groupNamesLocal)
-		maxBarTop = GetMaxBarTop(waveNamesLocal, numGroupsLocal)
-	else
-		// barTopsLocal
-		maxBarTop = max(barTopsLocal[0], barTopsLocal[1])
-	endif
-	
-	// X: 2 = 1
-	Variable xDataCoord = 1
-	
-	// Y: maxBarTop = mean + SEM50%
-	Variable yDataCoord
-	if(numtype(maxBarTop) == 0 && maxBarTop > 0)
-		yDataCoord = maxBarTop * 1.5
-	else
-		// : Y60%
-		yDataCoord = yAxisMax * 0.6 * 1.5
-	endif
-	
-	// TextBox
-	// /A=MBMiddle Bottom
-	Variable xCenter = (xAxisMax + xAxisMin) / 2  // = 0.5
-	Variable yCenter = (yAxisMax + yAxisMin) / 2
-	Variable xPct = (xDataCoord - xCenter) / (xAxisRange / 2) * 50  // = 25 ()
-	Variable yPct = (yDataCoord - yCenter) / (yAxisRange / 2) * 50
-	
-	TextBox/W=$targetGraph/C/N=sigText0/F=0/B=1/A=MB/X=(xPct)/Y=(yPct) "\\Z18\\f01" + sigMark
-	
-	return 0
+	Make/FREE/N=1 pVals = {pVal}, g1Idx = {0}, g2Idx = {1}
+	return DrawSignificanceBrackets(targetGraph, pVals, g1Idx, g2Idx, 2)
 End
 
 // -----------------------------------------------------------------------------
@@ -2317,6 +2481,7 @@ End
 // vs Control: 2*
 // Y(mean + SEM) + yRange*5%
 // -----------------------------------------------------------------------------
+// Sidak vs Control: bracket from group 0 to each significant group
 Function AddSidakVsControlToGraph(targetGraph, pAdjusted, groupNames, numGroups)
 	String targetGraph
 	Wave pAdjusted
@@ -2324,94 +2489,15 @@ Function AddSidakVsControlToGraph(targetGraph, pAdjusted, groupNames, numGroups)
 	Variable numGroups
 	
 	Variable numComparisons = numpnts(pAdjusted)
+	
+	// Build pair arrays: control (0) vs group (i+1)
+	Make/FREE/N=(numComparisons) g1Idx = 0, g2Idx
 	Variable i
-	
-	// TextBox
-	for(i = 0; i < 20; i += 1)
-		TextBox/W=$targetGraph/K/N=$("sigText" + num2str(i))
-	endfor
-	
-	// 0numGroups-1
-	// catGap=0.5-0.5numGroups-0.5
-	Variable xAxisMin = -0.5
-	Variable xAxisMax = numGroups - 0.5
-	Variable xAxisRange = xAxisMax - xAxisMin  // = numGroups
-	
-	// Y
-	GetAxis/Q/W=$targetGraph left
-	Variable yAxisMin = V_min
-	Variable yAxisMax = V_max
-	Variable yAxisRange = yAxisMax - yAxisMin
-	
-	// 
-	if(yAxisRange <= 0 || numtype(yAxisRange) != 0)
-		Print "Error: Invalid Y axis range"
-		return -1
-	endif
-	
-	// (mean + SEM)
-	Make/FREE/N=(numGroups) barTopsLocal
-	barTopsLocal = 0
-	Variable numBarTops = GetBarTopsFromGraph(targetGraph, barTopsLocal)
-	
-	// 
-	Variable maxBarTop = 0
-	if(numBarTops == 0)
-		Make/FREE/T/N=20 waveNamesLocal, groupNamesLocal
-		Variable numGroupsLocal = GetCellDataWaveNames(targetGraph, waveNamesLocal, groupNamesLocal)
-		maxBarTop = GetMaxBarTop(waveNamesLocal, numGroupsLocal)
-	else
-		// barTopsLocal
-		Variable bi
-		for(bi = 0; bi < numGroups; bi += 1)
-			if(numtype(barTopsLocal[bi]) == 0 && barTopsLocal[bi] > maxBarTop)
-				maxBarTop = barTopsLocal[bi]
-			endif
-		endfor
-	endif
-	
-	// Y: maxBarTop = mean + SEM50%
-	Variable yDataCoord
-	if(numtype(maxBarTop) == 0 && maxBarTop > 0)
-		yDataCoord = maxBarTop * 1.5
-	else
-		// : Y60%
-		yDataCoord = yAxisMax * 0.6 * 1.5
-	endif
-	
-	Variable sigCount = 0
-	
-	// vs Controli (i=0,1,2,...)  Group 0 vs Group (i+1)
-	// i+1*
 	for(i = 0; i < numComparisons; i += 1)
-		if(pAdjusted[i] < 0.05)
-			String sigMark = ""
-			if(pAdjusted[i] < 0.001)
-				sigMark = "***"
-			elseif(pAdjusted[i] < 0.01)
-				sigMark = "**"
-			else
-				sigMark = "*"
-			endif
-			
-			// X: i+1
-			Variable xDataCoord = i + 1
-			
-			// TextBox
-			// /A=MBMiddle Bottom
-			Variable xCenter = (xAxisMax + xAxisMin) / 2
-			Variable yCenter = (yAxisMax + yAxisMin) / 2
-			Variable xPct = (xDataCoord - xCenter) / (xAxisRange / 2) * 50
-			Variable yPct = (yDataCoord - yCenter) / (yAxisRange / 2) * 50
-			
-			String tbName = "sigText" + num2str(sigCount)
-			TextBox/W=$targetGraph/C/N=$tbName/F=0/B=1/A=MB/X=(xPct)/Y=(yPct) "\\Z18\\f01" + sigMark
-			
-			sigCount += 1
-		endif
+		g2Idx[i] = i + 1
 	endfor
 	
-	return 0
+	return DrawSignificanceBrackets(targetGraph, pAdjusted, g1Idx, g2Idx, numGroups)
 End
 
 // -----------------------------------------------------------------------------
@@ -2419,201 +2505,14 @@ End
 // All Pairs: 2*
 // YyMax + 5%X-5% offset
 // -----------------------------------------------------------------------------
+// Sidak All Pairs: bracket for each significant pair
 Function AddSidakAllPairsToGraph(targetGraph, pAdjusted, group1Idx, group2Idx, groupNames, numGroups)
 	String targetGraph
 	Wave pAdjusted, group1Idx, group2Idx
 	Wave/T groupNames
 	Variable numGroups
 	
-	Variable numComparisons = numpnts(pAdjusted)
-	Variable i, j
-	
-	// TextBox
-	for(i = 0; i < 50; i += 1)
-		TextBox/W=$targetGraph/K/N=$("sigText" + num2str(i))
-	endfor
-	
-	// 0numGroups-1
-	// catGap=0.5-0.5numGroups-0.5
-	Variable xAxisMin = -0.5
-	Variable xAxisMax = numGroups - 0.5
-	Variable xAxisRange = xAxisMax - xAxisMin  // = numGroups
-	
-	// Y
-	GetAxis/Q/W=$targetGraph left
-	Variable yAxisMin = V_min
-	Variable yAxisMax = V_max
-	Variable yAxisRange = yAxisMax - yAxisMin
-	
-	// 
-	if(yAxisRange <= 0 || numtype(yAxisRange) != 0)
-		Print "Error: Invalid Y axis range"
-		return -1
-	endif
-	
-	// (mean + SEM)
-	Make/FREE/N=(numGroups) barTops
-	barTops = 0  // 
-	Variable numBarTops = GetBarTopsFromGraph(targetGraph, barTops)
-	
-	// 
-	if(numBarTops == 0)
-		Make/FREE/T/N=20 waveNamesLocal, groupNamesLocal
-		Variable numGroupsLocal = GetCellDataWaveNames(targetGraph, waveNamesLocal, groupNamesLocal)
-		for(i = 0; i < min(numGroupsLocal, numGroups); i += 1)
-			barTops[i] = GetGroupBarTop(waveNamesLocal, i)
-		endfor
-	endif
-	
-	// barTop
-	Variable globalMaxBarTop = 0
-	for(i = 0; i < numGroups; i += 1)
-		if(numtype(barTops[i]) == 0 && barTops[i] > globalMaxBarTop)
-			globalMaxBarTop = barTops[i]
-		endif
-	endfor
-	// barTopyAxisMax60%
-	if(globalMaxBarTop <= 0)
-		globalMaxBarTop = yAxisMax * 0.6
-	endif
-	
-	// 
-	Variable lineSpaceVal = -10  // 
-	Variable yOffsetPct = 5      // %
-	Variable barFontSize = 10    // 
-	ControlInfo/W=SMI_MainPanel tab6_sv_linespace
-	if(V_flag != 0)
-		lineSpaceVal = V_Value
-	endif
-	ControlInfo/W=SMI_MainPanel tab6_sv_yoffset
-	if(V_flag != 0)
-		yOffsetPct = V_Value
-	endif
-	ControlInfo/W=SMI_MainPanel tab6_sv_barfont
-	if(V_flag != 0)
-		barFontSize = V_Value
-	endif
-	
-	Variable yOffsetData = yAxisRange * yOffsetPct / 100  // 
-	
-	// 
-	Make/FREE/N=(numComparisons) sigIdx, xMidPoints, baseYCoords, groupSpans
-	Variable sigCount = 0
-	
-	for(i = 0; i < numComparisons; i += 1)
-		if(pAdjusted[i] < 0.05)
-			Variable g1 = group1Idx[i]
-			Variable g2 = group2Idx[i]
-			
-			sigIdx[sigCount] = i
-			xMidPoints[sigCount] = (g1 + g2) / 2.0  // 
-			groupSpans[sigCount] = abs(g2 - g1)     // 
-			
-			// 2(mean + SEM)
-			// (globalMaxBarTop)
-			Variable barTop1 = barTops[g1]
-			Variable barTop2 = barTops[g2]
-			Variable maxBarTop = max(barTop1, barTop2)
-			// globalMaxBarTop
-			maxBarTop = max(maxBarTop, globalMaxBarTop)
-			
-			if(numtype(maxBarTop) == 0 && maxBarTop > 0)
-				// Y*
-				baseYCoords[sigCount] = maxBarTop * 1.8
-			else
-				baseYCoords[sigCount] = globalMaxBarTop * 1.8
-			endif
-			
-			sigCount += 1
-		endif
-	endfor
-	
-	if(sigCount == 0)
-		return 0  // 
-	endif
-	
-	Redimension/N=(sigCount) sigIdx, xMidPoints, baseYCoords, groupSpans
-	
-	// Y
-	// baseYCoordsgroupSpan
-	Make/FREE/N=(sigCount) yOffsets
-	yOffsets = 0  // 0
-	
-	// baseYCoordsgroupSpan
-	// : baseYCoords * 1000 - groupSpanbaseYCoordsgroupSpan
-	Make/FREE/N=(sigCount) sortKey
-	for(i = 0; i < sigCount; i += 1)
-		// baseYCoordsbaseYCoordsgroupSpan
-		sortKey[i] = -baseYCoords[i] * 1000 - groupSpans[i]
-	endfor
-	Sort sortKey, sortKey, sigIdx, xMidPoints, baseYCoords, groupSpans
-	
-	// baseYCoords2
-	for(i = 1; i < sigCount; i += 1)
-		// Y
-		if(abs(baseYCoords[i] - baseYCoords[i-1]) < yOffsetData * 0.5)
-			yOffsets[i] = yOffsets[i-1] + 1  // 
-		endif
-	endfor
-	
-	// 
-	Variable xCenter = (xAxisMax + xAxisMin) / 2
-	Variable yCenter = (yAxisMax + yAxisMin) / 2
-	
-	for(i = 0; i < sigCount; i += 1)
-		Variable origIdx = sigIdx[i]
-		Variable g1_2 = group1Idx[origIdx]
-		Variable g2_2 = group2Idx[origIdx]
-		Variable xMid = (g1_2 + g2_2) / 2.0
-		Variable groupSpan = abs(g2_2 - g1_2)  // 
-		
-		String sigMark = ""
-		if(pAdjusted[origIdx] < 0.001)
-			sigMark = "***"
-		elseif(pAdjusted[origIdx] < 0.01)
-			sigMark = "**"
-		elseif(pAdjusted[origIdx] < 0.05)
-			sigMark = "*"
-		endif
-		
-		// 
-		// 1/80.25
-		// Unicode Box Drawing: ─ (U+2500)
-		String barStr = ""
-		Variable effectiveSpan = groupSpan - 0.25  // 0.125
-		if(effectiveSpan < 0.5)
-			effectiveSpan = 0.5  // 
-		endif
-		Variable barLen = effectiveSpan * 6  // 
-		Variable bi
-		for(bi = 0; bi < barLen; bi += 1)
-			barStr += "─"
-		endfor
-		
-		// X: 2
-		Variable xDataCoord = xMid
-		
-		// Y: 2max(barTop)
-		Variable yDataCoord = baseYCoords[i] - yOffsets[i] * yOffsetData
-		
-		// TextBox
-		Variable xPct = (xDataCoord - xCenter) / (xAxisRange / 2) * 50
-		Variable yPct = (yDataCoord - yCenter) / (yAxisRange / 2) * 50
-		
-		// *1TextBox
-		String tbName = "sigText" + num2str(i)
-		// *4
-		Variable starFontSize = barFontSize + 4
-		// Execute \\r 
-		String tbContent
-		sprintf tbContent, "\\JC\\Z%02d\\f01%s\\r\\Z%02d%s", starFontSize, sigMark, barFontSize, barStr
-		// /W
-		String cmdStr
-		sprintf cmdStr, "TextBox/W=%s/C/N=%s/F=0/B=1/A=MB/X=(%g)/Y=(%g)/LS=%d \"%s\"", targetGraph, tbName, xPct, yPct, lineSpaceVal, tbContent
-		Execute cmdStr
-	endfor
-	
-	return 0
+	return DrawSignificanceBrackets(targetGraph, pAdjusted, group1Idx, group2Idx, numGroups)
 End
 
 // -----------------------------------------------------------------------------

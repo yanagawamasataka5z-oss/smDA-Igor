@@ -140,23 +140,13 @@ Function TotalDensityAnalysis(SampleName)
 	NVAR/Z FrameNum = root:FrameNum
 	NVAR framerate = root:framerate
 	NVAR scale = root:scale
-	NVAR/Z DensityFrameAverage = root:DensityFrameAverage
-	NVAR/Z DensityStartFrame = root:DensityStartFrame
-	NVAR/Z DensityEndFrame = root:DensityEndFrame
-	
-	Variable startFrame = 0
-	Variable endFrame = 1000
-	Variable smoothing = 10
-	
-	if(NVAR_Exists(DensityStartFrame))
-		startFrame = DensityStartFrame
-	endif
-	if(NVAR_Exists(DensityEndFrame))
-		endFrame = DensityEndFrame
-	endif
-	if(NVAR_Exists(DensityFrameAverage))
-		smoothing = DensityFrameAverage
-	endif
+	NVAR DSmoothing = root:DSmoothing
+	NVAR DensityStartFrame = root:DensityStartFrame
+	NVAR DensityEndFrame = root:DensityEndFrame
+
+	Variable startFrame = DensityStartFrame
+	Variable endFrame = DensityEndFrame
+	Variable smoothing = DSmoothing
 	
 	Variable rangeFrames = endFrame - startFrame + 1
 	
@@ -1013,39 +1003,33 @@ Function DensityIntHistToImageTL()
 	SVAR/Z Color5 = root:Color5
 	
 	NVAR/Z txt = root:DIhistTxt
-	NVAR/Z Imin = root:DIhistImageMin
-	NVAR/Z Imax = root:DIhistImageMax
-	
+	NVAR Imin = root:DIhistImageMin
+	NVAR Imax = root:DIhistImageMax
+
 	NVAR/Z LigandNumTL = root:LigandNumTL
 	NVAR/Z TimeInterval = root:TimeInterval
 	NVAR/Z TimePoints = root:TimePoints
 	NVAR/Z TimeStimulation = root:TimeStimulation
-	
+
 	NVAR Dstate = root:Dstate
 	NVAR HistBin = root:IhistBin
 	NVAR HistDim = root:IhistDim
-	
+
 	Variable PixX = 164
 	Variable PixY = 100
-	
-	// 
+
+	//
 	Variable showText = 1
 	if(NVAR_Exists(txt))
 		showText = txt
 	endif
-	
-	Variable imgMin = 0.0001
-	Variable imgMax = 0.01
-	if(NVAR_Exists(Imin))
-		imgMin = Imin
-	endif
-	if(NVAR_Exists(Imax))
-		imgMax = Imax
-	endif
-	
+
+	Variable imgMin = Imin
+	Variable imgMax = Imax
+
 	// TopGraphWave
 	OriginalWaveListStr = WaveList("!*sem", ";", "WIN:")
-	
+
 	Variable Entropy = StringMatch(OriginalWaveListStr, "*Entropy*")
 	
 	Variable Maxi = ItemsInList(OriginalWaveListStr)
@@ -1160,12 +1144,12 @@ Function TL_CreateDxIImage()
 	
 	// 
 	NVAR/Z Dstate = root:Dstate
-	NVAR/Z IHistBin = root:IhistBin
-	NVAR/Z IHistDim = root:IhistDim
+	NVAR IHistBin = root:IhistBin
+	NVAR IHistDim = root:IhistDim
 	NVAR/Z TimeInterval = root:TimeInterval
 	NVAR/Z TimePoints = root:TimePoints
-	NVAR/Z Imin = root:DIhistImageMin
-	NVAR/Z Imax = root:DIhistImageMax
+	NVAR Imin = root:DIhistImageMin
+	NVAR Imax = root:DIhistImageMax
 	NVAR/Z noLabel = root:LayoutNoLabel
 	
 	// 
@@ -1201,15 +1185,9 @@ Function TL_CreateDxIImage()
 		numStates = Dstate + 1
 	endif
 	
-	// 
-	HistBin = 1000
-	HistDim = 100
-	if(NVAR_Exists(IHistBin))
-		HistBin = IHistBin
-	endif
-	if(NVAR_Exists(IHistDim))
-		HistDim = IHistDim
-	endif
+	//
+	HistBin = IHistBin
+	HistDim = IHistDim
 	
 	// 
 	interval = 10
@@ -1222,14 +1200,8 @@ Function TL_CreateDxIImage()
 	if(NVAR_Exists(noLabel))
 		hideLabel = noLabel
 	endif
-	imgMin = 1e-05
-	imgMax = 0.1
-	if(NVAR_Exists(Imin))
-		imgMin = Imin
-	endif
-	if(NVAR_Exists(Imax))
-		imgMax = Imax
-	endif
+	imgMin = Imin
+	imgMax = Imax
 	
 	// 
 	PixX = 164
@@ -1419,8 +1391,8 @@ Function TL_AddColorScalesToLayout(layoutName, numPages, pageW_inch, pageH_inch,
 	Variable numPages, pageW_inch, pageH_inch, offset_mm
 	
 	// 
-	NVAR/Z Imin = root:DIhistImageMin
-	NVAR/Z Imax = root:DIhistImageMax
+	NVAR Imin = root:DIhistImageMin
+	NVAR Imax = root:DIhistImageMax
 	NVAR/Z Dstate = root:Dstate
 	NVAR/Z scaleFontSize = root:LayoutScaleFontSize
 	SVAR/Z Color0 = root:Color0
@@ -1441,16 +1413,10 @@ Function TL_AddColorScalesToLayout(layoutName, numPages, pageW_inch, pageH_inch,
 	Variable contentW, csHeight, csWidth, totalScaleW, scaleSpacing
 	Variable pageIdx, stateIdx, csLeft, csTop
 	String cmd, csName, csColor
-	
-	// 
-	imgMin = 1e-05
-	imgMax = 0.1
-	if(NVAR_Exists(Imin))
-		imgMin = Imin
-	endif
-	if(NVAR_Exists(Imax))
-		imgMax = Imax
-	endif
+
+	//
+	imgMin = Imin
+	imgMax = Imax
 	
 	numStates = 2
 	if(NVAR_Exists(Dstate))
@@ -1544,35 +1510,29 @@ Function DensityIntHistToImageInfoTL()
 	SVAR/Z Color5 = root:Color5
 	
 	NVAR/Z txt = root:DIhistTxt
-	NVAR/Z Imin = root:DIhistImageMin
-	NVAR/Z Imax = root:DIhistImageMax
-	
+	NVAR Imin = root:DIhistImageMin
+	NVAR Imax = root:DIhistImageMax
+
 	NVAR/Z LigandNumTL = root:LigandNumTL
 	NVAR/Z TimeInterval = root:TimeInterval
 	NVAR/Z TimePoints = root:TimePoints
 	NVAR/Z TimeStimulation = root:TimeStimulation
-	
+
 	NVAR Dstate = root:Dstate
 	NVAR HistBin = root:IhistBin
 	NVAR HistDim = root:IhistDim
-	
+
 	Variable PixX = 164
 	Variable PixY = 100
-	
-	// 
+
+	//
 	Variable showText = 1
 	if(NVAR_Exists(txt))
 		showText = txt
 	endif
-	
-	Variable imgMin = 0
-	Variable imgMax = 0.5
-	if(NVAR_Exists(Imin))
-		imgMin = Imin
-	endif
-	if(NVAR_Exists(Imax))
-		imgMax = Imax
-	endif
+
+	Variable imgMin = Imin
+	Variable imgMax = Imax
 	
 	// TopGraphWave
 	OriginalWaveListStr = WaveList("!*sem", ";", "WIN:")
@@ -1689,26 +1649,26 @@ End
 Function TL_CreateSampleList()
 	NVAR/Z TimePoints = root:TimePoints
 	NVAR/Z LigandNumTL = root:LigandNumTL
-	NVAR/Z TimeInterval = root:TimeInterval
-	
-	// 
+	NVAR TimeInterval = root:TimeInterval
+
+	//
 	if(!NVAR_Exists(TimePoints) || TimePoints < 1)
 		DoAlert 0, "TimePoints is not set. Please set Timelapse parameters first."
 		return -1
 	endif
-	
+
 	Variable numConditions = 1
 	if(NVAR_Exists(LigandNumTL) && LigandNumTL > 0)
 		numConditions = LigandNumTL
 	endif
-	
-	// 
+
+	//
 	Variable isColMode, chMode, channelIdx, numSamples, expectedSamples
 	Variable condIdx, tpIdx, sampleIdx, numFolders, idx, interval
 	String currentDF, sampleList, chName, folderName, colLabel, rowLabel
-	
+
 	currentDF = GetDataFolder(1)
-	interval = NVAR_Exists(TimeInterval) ? TimeInterval : 5
+	interval = TimeInterval
 	
 	// Colocalization
 	isColMode = TL_IsColocalizationMode()
@@ -1724,6 +1684,14 @@ Function TL_CreateSampleList()
 			Print "Creating TL_SampleList for Both channels (C1 and C2)"
 			TL_CreateSampleListForChannelEx(0, "TL_SampleList_C1", numConditions, TimePoints)
 			TL_CreateSampleListForChannelEx(1, "TL_SampleList_C2", numConditions, TimePoints)
+			
+			// Also create TL_SampleList as copy of C1 for compatibility with analysis functions
+			SetDataFolder root:Comparison
+			Wave/T/Z TL_SampleList_C1
+			if(WaveExists(TL_SampleList_C1))
+				Duplicate/O/T TL_SampleList_C1, TL_SampleList
+			endif
+			SetDataFolder $currentDF
 			
 			// 
 			DoWindow/K TL_SampleListTable_C1
@@ -1744,6 +1712,7 @@ Function TL_CreateSampleList()
 			Print ""
 			Print "Please verify the sample order in BOTH tables."
 			Print "Edit TL_SampleList_C1 and TL_SampleList_C2 if necessary."
+			Print "Note: TL_SampleList (copy of C1) is also created for analysis functions."
 		else
 			// C1 or C2: 1
 			channelIdx = (chMode == 2) ? 1 : 0
@@ -1929,8 +1898,8 @@ Function TL_CreateSampleListForChannelEx(channelIdx, listName, numConditions, nu
 	endfor
 	
 	// 
-	NVAR/Z TimeInterval = root:TimeInterval
-	Variable interval = NVAR_Exists(TimeInterval) ? TimeInterval : 5
+	NVAR TimeInterval = root:TimeInterval
+	Variable interval = TimeInterval
 	
 	for(tpIdx = 0; tpIdx < numTimePoints; tpIdx += 1)
 		String colLabel = "t" + num2str(tpIdx * interval) + "min"
