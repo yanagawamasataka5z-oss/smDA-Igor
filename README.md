@@ -2,7 +2,7 @@
 # smDA
 ## single-molecule Dynamics Analyzer
 
-**Version 4.2.0e**
+**Version 5.4.6e**
 
 # User Manual
 
@@ -517,7 +517,7 @@ When using smDA for published research, please cite:
 
 - **GitHub Repository:** https://github.com/masataka-yanagawa/IgorPro8-smDynamicsAnalyzer
 - **Igor Pro:** https://www.wavemetrics.com/products/igorpro
-- **AAS (Zido):** https://zido.co.jp/en/
+- **AAS (Zido):** https://eng.zido.co.jp
 
 ---
 
